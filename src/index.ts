@@ -14,6 +14,7 @@ async function main() {
     const targetDir = args[1] || './src';
     console.error(`Indexing directory: ${path.resolve(targetDir)}`);
     await service.indexDirectory(targetDir);
+    await service.resolveImports();
     await service.resolveCalls();
     console.error('Indexing complete.');
     process.exit(0);

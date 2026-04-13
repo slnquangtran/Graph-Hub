@@ -1,6 +1,11 @@
 import { Parser, Language } from 'web-tree-sitter';
 import path from 'path';
 
+export interface ImportDefinition {
+  source: string;
+  specifiers: string[];
+}
+
 export interface SymbolDefinition {
   name: string;
   kind: 'function' | 'class' | 'interface' | 'method' | 'import' | 'variable';
@@ -9,6 +14,7 @@ export interface SymbolDefinition {
     end: { row: number; column: number };
   };
   calls?: string[];
+  imports?: ImportDefinition[];
 }
 
 export class CodeParser {
@@ -112,6 +118,41 @@ export class CodeParser {
                 caller.calls.push(targetName);
               }
             }
+          }
+          break;
+
+        // --- Import Extraction ---
+        case 'import_statement':
+          const sourceNode = node.childForFieldName('source');
+          if (sourceNode) {
+            const source = sourceNode.text.replace(/['"]/g, ''); // Clean quotes
+            const specifiers: string[] = [];
+            
+            const clause = node.childForFieldName('clause');
+            if (clause) {
+              // Find named imports, namespace imports, etc.
+              const named = clause.descendantsOfType('import_specifier');
+              named.forEach(n => specifiers.push(n.text));
+              
+              // Handle default import
+              const firstChild = clause.child(0);
+              if (firstChild && firstChild.type === 'identifier') {
+                specifiers.push(firstChild.text);
+              }
+
+              // Handle namespace import
+              const namespace = clause.descendantsOfType('namespace_import');
+              namespace.forEach(n => specifiers.push(n.text));
+            }
+
+            // Map imports to the file level by pushing to the list
+            // We'll return them as part of a virtual 'file' symbol or just in the list
+            symbol = {
+              name: source,
+              kind: 'import',
+              range: this.getRange(node),
+              imports: [{ source, specifiers }]
+            };
           }
           break;
       }

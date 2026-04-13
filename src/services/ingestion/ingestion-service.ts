@@ -40,13 +40,15 @@ export class IngestionService {
       
       await this.db.runCypher(
         'MERGE (s:Symbol {id: $id}) ' +
-        'ON CREATE SET s.name = $name, s.kind = $kind, s.range = $range, s.calls = $calls',
+        'ON CREATE SET s.name = $name, s.kind = $kind, s.range = $range, s.calls = $calls, s.import_source = $importSource, s.import_specifiers = $importSpecifiers',
         { 
           id: symId, 
           name: sym.name, 
           kind: sym.kind, 
           range: JSON.stringify(sym.range),
-          calls: sym.calls || []
+          calls: sym.calls || [],
+          importSource: sym.imports?.[0]?.source || '',
+          importSpecifiers: sym.imports?.[0]?.specifiers || []
         }
       );
 
@@ -60,10 +62,63 @@ export class IngestionService {
     console.log(`Indexed ${filePath} with ${symbols.length} symbols.`);
   }
 
+  private async resolveImportPath(sourcePath: string, importSource: string): Promise<string | null> {
+    if (!importSource.startsWith('.')) return null; // Skip non-relative for now
+
+    const dir = path.dirname(sourcePath);
+    const targetBase = path.resolve(dir, importSource);
+    const extensions = ['.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.js'];
+
+    for (const ext of extensions) {
+      const fullPath = targetBase + (ext.startsWith('/') ? ext : ext);
+      // Wait, if it starts with /, it's a directory case
+      const candidate = ext.startsWith('/') ? targetBase + ext : targetBase + ext;
+      
+      try {
+        await fs.access(candidate);
+        return candidate;
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  public async resolveImports(): Promise<void> {
+    console.log('Resolving imports across files...');
+    const result = await this.db.runCypher(
+      'MATCH (f:File)-[:CONTAINS]->(s:Symbol {kind: "import"}) RETURN f.path as source, s.import_source as target, s.import_specifiers as specifiers'
+    );
+    const imports = await result.getAll();
+
+    for (const imp of imports) {
+      const targetPath = await this.resolveImportPath(imp.source, imp.target);
+      if (targetPath) {
+        await this.db.runCypher(
+          'MATCH (f1:File {path: $source}), (f2:File {path: $target}) ' +
+          'MERGE (f1)-[r:IMPORTS]->(f2) ' +
+          'SET r.specifiers = $specifiers',
+          { source: imp.source, target: targetPath, specifiers: imp.specifiers }
+        );
+      }
+    }
+    console.log('Import resolution complete.');
+  }
+
   public async resolveCalls(): Promise<void> {
     console.log('Resolving symbol calls across the graph...');
     try {
-      // Heuristic resolution: Link callers to any symbol with matching name
+      // 1. Precise resolution: Using imports
+      await this.db.runCypher(
+        'MATCH (f1:File)-[r:IMPORTS]->(f2:File) ' +
+        'UNWIND r.specifiers as symName ' +
+        'MATCH (f1)-[:CONTAINS]->(caller:Symbol) ' +
+        'WHERE symName IN caller.calls ' +
+        'MATCH (f2)-[:CONTAINS]->(target:Symbol {name: symName}) ' +
+        'MERGE (caller)-[:CALLS]->(target)'
+      );
+
+      // 2. Heuristic fallback: Same file or same name global
       await this.db.runCypher(
         'MATCH (s1:Symbol) ' +
         'UNWIND s1.calls AS targetName ' +
