@@ -22,8 +22,13 @@ async function main() {
     const server = new GraphHubMCPServer();
     console.error('--- GraphHub MCP Server Starting ---');
     await server.run();
+  } else if (command === 'serve-api') {
+    const { GraphHubAPIServer } = await import('./services/api/server.ts');
+    const server = new GraphHubAPIServer();
+    console.error('--- GraphHub API Server Starting ---');
+    server.listen(9000);
   } else {
-    console.error('Usage: tsx src/index.ts [index <dir> | serve]');
+    console.error('Usage: tsx src/index.ts [index <dir> | serve | serve-api]');
     process.exit(1);
   }
 }
