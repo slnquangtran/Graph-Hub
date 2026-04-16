@@ -37,6 +37,7 @@ async function main() {
     const { GraphHubAPIServer } = await import('./services/api/server.ts');
     const server = new GraphHubAPIServer();
     console.error('--- GraphHub API Server Starting ---');
+    await server.initialize();
     server.listen(9000);
   } else if (command === 'docs') {
     // docs <provider> [--api-key KEY] [--model MODEL] [--base-url URL]

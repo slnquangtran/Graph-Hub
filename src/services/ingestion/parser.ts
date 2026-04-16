@@ -32,7 +32,7 @@ export class CodeParser {
 
     // Load languages
     const langDir = path.resolve('node_modules');
-    
+
     this.languages['typescript'] = await Language.load(
       path.join(langDir, 'tree-sitter-typescript', 'tree-sitter-typescript.wasm')
     );
@@ -42,6 +42,13 @@ export class CodeParser {
     this.languages['tsx'] = await Language.load(
       path.join(langDir, 'tree-sitter-typescript', 'tree-sitter-tsx.wasm')
     );
+    this.languages['python'] = await Language.load(
+      path.join(langDir, 'tree-sitter-python', 'tree-sitter-python.wasm')
+    );
+  }
+
+  public supportsLanguage(language: string): boolean {
+    return language in this.languages;
   }
 
   public parse(sourceCode: string, language: string): SymbolDefinition[] {
@@ -51,7 +58,10 @@ export class CodeParser {
 
     this.parser.setLanguage(this.languages[language]);
     const tree = this.parser.parse(sourceCode);
-    
+
+    if (language === 'python') {
+      return this.extractPythonSymbols(tree.rootNode);
+    }
     return this.extractSymbols(tree.rootNode);
   }
 
@@ -77,29 +87,46 @@ export class CodeParser {
         case 'function_expression':
         case 'arrow_function':
         case 'method_definition':
+        case 'lexical_declaration':
+        case 'variable_declaration':
           let kind: any = node.type === 'method_definition' ? 'method' : 'function';
           let name = 'anonymous';
           let inputs: string[] = [];
           let outputs: string[] = [];
           let technicalDebt: string[] = [];
           
-          if (node.type === 'method_definition' || node.type === 'function_declaration') {
+          let funcNode = node;
+
+          // Handle variable declarations: const add = () => ...
+          if (node.type === 'lexical_declaration' || node.type === 'variable_declaration') {
+            const declarator = node.descendantsOfType('variable_declarator')[0];
+            if (!declarator) break;
+            
+            const valueNode = declarator.childForFieldName('value');
+            if (valueNode && (valueNode.type === 'arrow_function' || valueNode.type === 'function_expression')) {
+              name = declarator.childForFieldName('name')?.text || 'anonymous';
+              funcNode = valueNode;
+            } else {
+              // Not a function assignment, skip it to keep the graph focused
+              break;
+            }
+          } else if (node.type === 'method_definition' || node.type === 'function_declaration') {
             name = node.childForFieldName('name')?.text || 'anonymous';
           }
 
-          // Extract inputs
-          const paramsNode = node.childForFieldName('parameters');
+          // Extract inputs from the function node (which might be the variable's value)
+          const paramsNode = funcNode.childForFieldName('parameters');
           if (paramsNode) {
             inputs = paramsNode.text.replace(/[()]/g, '').split(',').map(s => s.trim()).filter(Boolean);
           }
 
-          // Extract outputs
-          const returnTypeNode = node.childForFieldName('return_type');
+          // Extract outputs from the function node
+          const returnTypeNode = funcNode.childForFieldName('return_type');
           if (returnTypeNode) {
             outputs.push(returnTypeNode.text.replace(/^:\s*/, ''));
           } else {
              // Basic heuristic inference tracking
-             const returnStatements = node.descendantsOfType('return_statement');
+             const returnStatements = funcNode.descendantsOfType('return_statement');
              if (returnStatements.length > 0) {
                  outputs.push('inferred_dynamic_type');
              } else {
@@ -114,7 +141,6 @@ export class CodeParser {
           const debtMarkers = combinedContext.match(/(TODO|FIXME|HACK|OPTIMIZE|XXX).*$/gm);
           
           if (debtMarkers) {
-             // Clean markers strings
              technicalDebt = [...new Set(debtMarkers.map(m => m.trim()))];
           }
 
@@ -129,7 +155,7 @@ export class CodeParser {
             technicalDebt: technicalDebt.length > 0 ? technicalDebt : undefined,
             status: technicalDebt.length > 0 ? 'Incomplete' : 'Done'
           };
-          pendingComments = []; // Reset after assigning
+          pendingComments = [];
           break;
         case 'class_declaration':
           symbol = {
@@ -228,7 +254,138 @@ export class CodeParser {
     };
 
     visit(rootNode);
-    return symbols;
+    // Filter out anonymous functions - they clutter the graph
+    return symbols.filter(s => s.name !== 'anonymous');
+  }
+
+  private extractPythonSymbols(rootNode: Parser.SyntaxNode): SymbolDefinition[] {
+    const symbols: SymbolDefinition[] = [];
+    let currentSymbolsStack: SymbolDefinition[] = [];
+    let pendingComments: string[] = [];
+
+    const visit = (node: Parser.SyntaxNode) => {
+      let symbol: SymbolDefinition | null = null;
+
+      // Capture Python comments and docstrings
+      if (node.type === 'comment') {
+        pendingComments.push(node.text);
+      }
+      if (node.type === 'expression_statement') {
+        const child = node.child(0);
+        if (child?.type === 'string') {
+          // This is likely a docstring
+          pendingComments.push(child.text);
+        }
+      }
+
+      switch (node.type) {
+        case 'function_definition':
+          const funcName = node.childForFieldName('name')?.text || 'anonymous';
+          const params = node.childForFieldName('parameters');
+          const returnType = node.childForFieldName('return_type');
+
+          let inputs: string[] = [];
+          if (params) {
+            // Extract parameter names and types
+            for (let i = 0; i < params.childCount; i++) {
+              const param = params.child(i);
+              if (param && (param.type === 'identifier' || param.type === 'typed_parameter' ||
+                           param.type === 'default_parameter' || param.type === 'typed_default_parameter')) {
+                const paramName = param.childForFieldName('name')?.text || param.text;
+                const paramType = param.childForFieldName('type')?.text;
+                if (paramName && paramName !== ',' && paramName !== '(' && paramName !== ')') {
+                  inputs.push(paramType ? `${paramName}: ${paramType}` : paramName);
+                }
+              }
+            }
+          }
+
+          let outputs: string[] = [];
+          if (returnType) {
+            outputs.push(returnType.text.replace(/^->\s*/, ''));
+          } else {
+            // Check for return statements
+            const returnStmts = node.descendantsOfType('return_statement');
+            if (returnStmts.length > 0) {
+              outputs.push('inferred');
+            } else {
+              outputs.push('None');
+            }
+          }
+
+          symbol = {
+            name: funcName,
+            kind: 'function',
+            range: this.getRange(node),
+            calls: [],
+            doc: pendingComments.join('\n'),
+            inputs: inputs.length > 0 ? inputs : undefined,
+            outputs: outputs.length > 0 ? outputs : undefined,
+          };
+          pendingComments = [];
+          break;
+
+        case 'class_definition':
+          symbol = {
+            name: node.childForFieldName('name')?.text || 'anonymous',
+            kind: 'class',
+            range: this.getRange(node),
+            doc: pendingComments.join('\n'),
+          };
+          pendingComments = [];
+          break;
+
+        case 'call':
+          const caller = currentSymbolsStack[currentSymbolsStack.length - 1];
+          if (caller && caller.calls) {
+            const funcNode = node.childForFieldName('function');
+            if (funcNode) {
+              let targetName = '';
+              if (funcNode.type === 'identifier') {
+                targetName = funcNode.text;
+              } else if (funcNode.type === 'attribute') {
+                // e.g., obj.method() - get the method name
+                targetName = funcNode.childForFieldName('attribute')?.text || '';
+              }
+              if (targetName && !caller.calls.includes(targetName)) {
+                caller.calls.push(targetName);
+              }
+            }
+          }
+          break;
+
+        case 'import_statement':
+        case 'import_from_statement':
+          const moduleName = node.childForFieldName('module_name')?.text ||
+                            node.childForFieldName('name')?.text || 'unknown';
+          symbol = {
+            name: moduleName,
+            kind: 'import',
+            range: this.getRange(node),
+            imports: [{ source: moduleName, specifiers: [] }]
+          };
+          break;
+      }
+
+      if (symbol) {
+        symbols.push(symbol);
+        if (symbol.kind === 'function') {
+          currentSymbolsStack.push(symbol);
+        }
+      }
+
+      for (let i = 0; i < node.childCount; i++) {
+        visit(node.child(i)!);
+      }
+
+      if (symbol && symbol.kind === 'function') {
+        currentSymbolsStack.pop();
+      }
+    };
+
+    visit(rootNode);
+    // Filter out anonymous functions - they clutter the graph
+    return symbols.filter(s => s.name !== 'anonymous');
   }
 
   private getRange(node: Parser.SyntaxNode) {

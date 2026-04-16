@@ -104,7 +104,22 @@ Files are SHA-256 hashed before indexing. If the hash matches the stored `FileHa
 | GET | `/api/graph?workspace=` | Graph nodes + edges for visualization |
 | POST | `/api/search` | Semantic search (`{ query }`) |
 | GET | `/api/symbol/:name` | Symbol detail: inputs, outputs, callers, callees, debt |
+| GET | `/api/functions?workspace=` | All functions with name, kind, inputs, outputs, calls, location |
+| POST | `/api/find-purpose` | **API key required** - Generate purpose/strategy for a symbol |
+| GET | `/api/entry-points?workspace=` | Functions with few/no callers (entry points) |
+| GET | `/api/trace/:name?depth=` | Execution trace tree from a starting symbol |
 | GET | `/health` | Health check |
+
+### Function Data Model
+
+Each function node contains:
+- **name** - Function identifier
+- **inputs** - Parameter list (e.g., `["name: string", "age: number"]`)
+- **outputs** - Return type (e.g., `["Promise<void>"]`)
+- **calls** - Functions this function invokes
+- **location** - File path and line number
+
+**Note:** `purpose` (what the function does) is intentionally omitted from `/api/functions`. It is only available via the API-key-protected `/api/find-purpose` endpoint.
 
 ## What Good Looks Like
 - Each service is stateless except `GraphClient` (intentional singleton to share one KuzuDB connection).

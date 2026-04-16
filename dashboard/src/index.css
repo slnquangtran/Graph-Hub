@@ -1,43 +1,38 @@
-/* Apple Design System - Global Styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600&family=Playfair+Display:wght@700&display=swap');
 
 :root {
-  /* Primary Colors */
-  --apple-black: #000000;
-  --apple-white: #ffffff;
-  --apple-gray: #f5f5f7;
-  --apple-near-black: #1d1d1f;
-
+  /* MongoDB LeafyGreen Palette */
+  --mongodb-forest: #001E2B;
+  --mongodb-slate: #001B25;
+  --mongodb-spring-green: #00ED64;
+  --mongodb-forest-green: #00684A;
+  --mongodb-white: #ffffff;
+  --mongodb-gray-dark-1: #3D4F58;
+  --mongodb-gray-dark-2: #21313C;
+  --mongodb-gray-dark-3: #112733;
+  --mongodb-gray-light-1: #E8EDEB;
+  --mongodb-gray-light-2: #CFD8DC;
+  
   /* Interactive */
-  --apple-blue: #0071e3;
-  --apple-link-blue: #0066cc;
-  --apple-link-blue-dark: #2997ff;
-
-  /* Text */
-  --text-primary-light: #1d1d1f;
-  --text-primary-dark: #ffffff;
-  --text-secondary: rgba(0, 0, 0, 0.8);
-  --text-tertiary: rgba(0, 0, 0, 0.48);
+  --mongodb-blue: #016BF8;
+  --mongodb-yellow: #FFC010;
+  --mongodb-red: #CF1124;
 
   /* Surfaces */
-  --surface-dark-1: #272729;
-  --surface-dark-2: #262628;
-  --surface-dark-3: #28282a;
-  --surface-dark-4: #2a2a2d;
-
-  /* Button States */
-  --button-active: #ededf2;
-  --button-default: #fafafc;
-
-  /* Nav Glass */
-  --nav-glass: rgba(0, 0, 0, 0.8);
-
-  /* Shadow */
-  --shadow-card: rgba(0, 0, 0, 0.22) 3px 5px 30px 0px;
+  --surface-main: var(--mongodb-forest);
+  --surface-secondary: var(--mongodb-slate);
+  --surface-panel: #002330;
+  --surface-card: #003043;
+  
+  /* Borders & Shadows */
+  --mongodb-border: rgba(255, 255, 255, 0.1);
+  --shadow-leafy: rgba(0, 0, 0, 0.4) 0px 4px 12px;
 
   /* Typography */
-  --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-text: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, Consolas, monospace;
+  --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-text: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Source Code Pro", monospace;
+  --font-serif: "Playfair Display", serif;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -55,9 +50,10 @@ body, html, #root {
   width: 100%;
   height: 100%;
   font-family: var(--font-text);
-  font-size: 17px;
-  line-height: 1.47;
-  letter-spacing: -0.374px;
+  font-size: 14px; /* MongoDB standard is slightly smaller */
+  line-height: 1.5;
+  background-color: var(--surface-main);
+  color: var(--mongodb-white);
 }
 
 /* Typography Scale */

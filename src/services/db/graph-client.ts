@@ -56,8 +56,10 @@ export class GraphClient {
         const preparedStatement = await this.conn.prepare(query);
         return await this.conn.execute(preparedStatement, params);
       }
-    } catch (error) {
-      console.error(`Cypher Query Error: ${query}`, error);
+    } catch (error: any) {
+      console.error(`[CYPHER ERROR] Query: ${query.substring(0, 100)}...`);
+      console.error(`[CYPHER ERROR] Params: ${JSON.stringify(params)}`);
+      console.error(`[CYPHER ERROR] Message: ${error.message}`);
       throw error;
     }
   }

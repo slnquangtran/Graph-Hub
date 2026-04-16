@@ -61,27 +61,45 @@ export class IngestionService {
       return; // Skip unchanged file
     }
 
-    const ext = path.extname(filePath).slice(1);
+    const ext = path.extname(filePath).slice(1).toLowerCase();
 
     let language = 'javascript';
     if (ext === 'ts') language = 'typescript';
     if (ext === 'tsx') language = 'tsx';
+    if (ext === 'py') language = 'python';
 
     const symbols = this.parser.parse(content, language);
 
-    // 1. Add File Node
+    // 1. Add/Update File Node
     await this.db.runCypher(
-      'MERGE (f:File {path: $path}) ON CREATE SET f.language = $language',
+      'MERGE (f:File {path: $path}) SET f.language = $language',
       { path: absolutePath, language }
     );
 
-    // 2. Add Symbols and CONTAINS relationship
+    // 2. Cleanup stale symbols and chunks previously associated with this file
+    // This removes duplicates if functions moved line numbers or were deleted
+    await this.db.runCypher(
+      'MATCH (f:File {path: $path})-[:CONTAINS]->(s:Symbol) ' +
+      'OPTIONAL MATCH (c:Chunk)-[:DESCRIBES]->(s) ' +
+      'DETACH DELETE s, c',
+      { path: absolutePath }
+    ).catch(() => {});
+
+    // 3. Add Symbols and CONTAINS relationship
+    const idCounts = new Map<string, number>();
+
     for (const sym of symbols) {
-      const symId = `${absolutePath}:${sym.name}:${sym.kind}:${sym.range.start.row}`;
+      // Generate a stable ID: path + name + kind
+      // Use a counter for multiple occurrences of the same name+kind (e.g. anonymous functions)
+      const baseKey = `${sym.name}:${sym.kind}`;
+      const count = (idCounts.get(baseKey) || 0) + 1;
+      idCounts.set(baseKey, count);
+      
+      const symId = `${absolutePath}:${sym.name}:${sym.kind}${count > 1 ? ':' + count : ''}`;
       
       await this.db.runCypher(
         'MERGE (s:Symbol {id: $id}) ' +
-        'ON CREATE SET s.name = $name, s.kind = $kind, s.range = $range, s.calls = $calls, s.import_source = $importSource, s.import_specifiers = $importSpecifiers, s.inputs = $inputs, s.outputs = $outputs',
+        'SET s.name = $name, s.kind = $kind, s.range = $range, s.calls = $calls, s.import_source = $importSource, s.import_specifiers = $importSpecifiers, s.inputs = $inputs, s.outputs = $outputs',
         {
           id: symId,
           name: sym.name,
@@ -101,7 +119,7 @@ export class IngestionService {
         { path: absolutePath, symId }
       );
 
-      // 3. Handle Docs & Chunks for RAG
+      // 4. Handle Docs & Chunks for RAG
       if (sym.doc && sym.doc.trim()) {
         const chunkId = `chunk:${symId}`;
         const embedding = await this.embeddingService.generateEmbedding(sym.doc);
@@ -233,12 +251,21 @@ export class IngestionService {
         'MERGE (caller)-[:CALLS]->(target)'
       );
 
-      // 2. Heuristic fallback: Same file or same name global
+      // 2. High probability: Same file resolution
+      await this.db.runCypher(
+        'MATCH (f:File)-[:CONTAINS]->(s1:Symbol), (f)-[:CONTAINS]->(s2:Symbol) ' +
+        'WHERE s1.id <> s2.id AND s2.name IN s1.calls ' +
+        'MERGE (s1)-[:CALLS]->(s2)'
+      );
+
+      // 3. Heuristic fallback: Match globally ONLY if no CALLS relationship for this name exists yet
+      // This prevents linking to every function named 'log' if we already found the specific one.
       await this.db.runCypher(
         'MATCH (s1:Symbol) ' +
         'UNWIND s1.calls AS targetName ' +
         'MATCH (s2:Symbol {name: targetName}) ' +
         'WHERE s1.id <> s2.id ' +
+        'AND NOT EXISTS { MATCH (s1)-[:CALLS]->(target:Symbol) WHERE target.name = targetName } ' +
         'MERGE (s1)-[:CALLS]->(s2)'
       );
       console.log('Call resolution complete.');
@@ -249,19 +276,28 @@ export class IngestionService {
 
   public async indexDirectory(dirPath: string): Promise<void> {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
-    
+
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name);
-      
+
       if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.graphhub') continue;
+        // Skip common non-source directories
+        const skipDirs = [
+          'node_modules', '.git', '.graphhub', '__pycache__', '.venv', 'venv',
+          '.env', 'env', '.claude', '.gemini', '.gitnexus', 'docs',
+          'dist', 'build', 'out', '.next', '.nuxt', 'coverage', '.cache',
+          'vendor', 'target', 'bin', 'obj', '.idea', '.vscode'
+        ];
+        if (skipDirs.includes(entry.name)) continue;
         await this.indexDirectory(fullPath);
       } else {
         const ext = path.extname(entry.name);
-        const codeExtensions = ['.ts', '.js', '.tsx', '.jsx'];
-        const fallbackExtensions = ['.py', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.md', '.txt', '.sh', '.ps1'];
-        
-        if (codeExtensions.includes(ext)) {
+        // Languages with full AST parsing support
+        const parsedExtensions = ['.ts', '.js', '.tsx', '.jsx', '.py'];
+        // Languages that fall back to text chunking
+        const fallbackExtensions = ['.java', '.c', '.cpp', '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.md', '.txt', '.sh', '.ps1'];
+
+        if (parsedExtensions.includes(ext.toLowerCase())) {
           await this.indexFile(fullPath);
         } else if (fallbackExtensions.includes(ext.toLowerCase())) {
           await this.indexFileFallback(fullPath);

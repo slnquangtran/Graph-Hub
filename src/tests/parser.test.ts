@@ -9,11 +9,16 @@ describe('CodeParser', () => {
     await parser.initialize();
   });
 
-  it('should extract class and method definitions from TypeScript', () => {
+  it('should extract class and method definitions with metadata', () => {
     const code = `
       class TestScanner {
-        public scan(dir: string): void {
-          console.log(dir);
+        /**
+         * Scans a directory for symbols.
+         * TODO: Add support for more languages.
+         */
+        public scan(dir: string, depth: number = 5): Promise<void> {
+          this.parser.parse(dir);
+          return Promise.resolve();
         }
       }
     `;
@@ -23,23 +28,45 @@ describe('CodeParser', () => {
       name: 'TestScanner',
       kind: 'class'
     }));
+    
     expect(symbols).toContainEqual(expect.objectContaining({
       name: 'scan',
-      kind: 'method'
+      kind: 'method',
+      inputs: ['dir: string', 'depth: number = 5'],
+      outputs: ['Promise<void>'],
+      calls: ['parse', 'resolve']
     }));
   });
 
-  it('should extract function declarations from JavaScript', () => {
+  it('should extract function declarations from JavaScript with inferred types', () => {
     const code = `
-      function helloWorld() {
-        return "Hello!";
+      function helloWorld(name) {
+        console.log("Hello " + name);
+        return "Greeting sent";
       }
     `;
     const symbols = parser.parse(code, 'javascript');
     
     expect(symbols).toContainEqual(expect.objectContaining({
       name: 'helloWorld',
-      kind: 'function'
+      kind: 'function',
+      inputs: ['name'],
+      outputs: ['inferred_dynamic_type'],
+      calls: ['log']
+    }));
+  });
+
+  it('should handle arrow functions and variables', () => {
+    const code = `
+      const add = (a: number, b: number): number => a + b;
+    `;
+    const symbols = parser.parse(code, 'typescript');
+    
+    expect(symbols).toContainEqual(expect.objectContaining({
+      name: 'add',
+      kind: 'function',
+      inputs: ['a: number', 'b: number'],
+      outputs: ['number']
     }));
   });
 });
