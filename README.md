@@ -1,181 +1,163 @@
+<div align="center">
+
 # GraphHub
 
-A local-first code intelligence platform that transforms your codebase into a queryable knowledge graph. Built for AI agents like Claude Code, Cursor, and other CLI tools to remember and understand your entire codebase across sessions.
+**Local-first code intelligence for AI agents**
 
-## Why GraphHub?
+Transform your codebase into a queryable knowledge graph. Built for Claude Code, Cursor, and MCP-compatible tools.
 
-AI coding assistants lose context between sessions. They can't remember what they learned about your codebase yesterday. GraphHub solves this by:
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/slnquangtran/graphhub/releases)
+[![License](https://img.shields.io/badge/license-ISC-green.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![MCP](https://img.shields.io/badge/MCP-compatible-purple.svg)](https://modelcontextprotocol.io/)
 
-- **Parsing your code** into a persistent knowledge graph (functions, classes, imports, call relationships)
-- **Exposing it via MCP** (Model Context Protocol) so AI agents can query it
-- **Running 100% locally** — your code never leaves your machine
+[Quick Start](#quick-start) · [Features](#features) · [Documentation](#mcp-tools) · [Token Savings](#token-savings)
 
-## Features
+</div>
 
-- **Code Indexing** — Parse TypeScript, JavaScript, TSX, JSX with Tree-sitter AST. Extracts functions, classes, methods, interfaces, imports, and call relationships.
-- **Knowledge Graph** — Stored in KuzuDB with File, Symbol, and Chunk nodes connected by CONTAINS, CALLS, IMPORTS, and DESCRIBES edges.
-- **Semantic Search (RAG)** — Local embeddings via `all-MiniLM-L6-v2` for natural language code search. Zero API costs.
-- **Impact Analysis** — Understand blast radius before editing. See direct and indirect callers of any function.
-- **Session Memory** — `remember` and `recall` tools persist learnings across sessions. Never lose context again.
-- **Always-On Hooks** — PreToolUse hooks inject graph context before Claude reads files.
-- **Graph Report** — Auto-generated `GRAPH_REPORT.md` with god nodes, clusters, and architecture overview.
-- **One-Command Install** — `npm run install-claude` configures MCP server and hooks automatically.
-- **MCP Server** — Standard Model Context Protocol interface for AI agent integration.
-- **REST API** — Express server on port 9000 for custom integrations.
-- **React Dashboard** — Interactive graph visualization with React Flow.
-- **Mermaid Export** — Generate visual diagrams of your codebase.
-- **Incremental Indexing** — SHA-256 file hashing skips unchanged files on re-index.
+---
+
+## The Problem
+
+AI coding assistants lose context between sessions. They re-read files, re-learn your codebase, and burn tokens on the same questions. **GraphHub fixes this.**
+
+```
+Traditional: grep → read 5 files → 9,216 tokens
+GraphHub:    get_context("functionName") → 507 tokens (94% savings)
+```
 
 ## Quick Start
 
-### Prerequisites
-
-- Node.js 18+
-- npm or pnpm
-
-### Installation
-
 ```bash
+# Clone and install
 git clone https://github.com/slnquangtran/graphhub.git
-cd graphhub
-npm install
+cd graphhub && npm install
+
+# Index your project
+npm run index -- /path/to/your/project
+
+# Configure Claude Code (one command)
+npm run install-claude
 ```
 
-### Index Your Codebase
+That's it. Claude now has persistent memory of your codebase.
 
-```bash
-# Index a directory (defaults to ./src)
-npm run index -- ./path/to/your/project
+## Features
 
-# Or index the current directory
-npm run index -- .
+### Core Intelligence
+
+| Feature | Description |
+|---------|-------------|
+| **Knowledge Graph** | Functions, classes, imports, and call relationships stored in KuzuDB |
+| **Semantic Search** | Natural language queries via local embeddings (no API costs) |
+| **Impact Analysis** | See what breaks before you edit — direct and indirect callers |
+| **Session Memory** | `remember` and `recall` persist learnings across sessions |
+
+### Developer Experience
+
+| Feature | Description |
+|---------|-------------|
+| **One-Command Setup** | `npm run install-claude` configures everything |
+| **Auto-Reindex** | PostToolUse hook keeps graph fresh after commits |
+| **Always-On Context** | PreToolUse hook reminds Claude about the graph |
+| **Graph Report** | Auto-generated overview with god nodes and clusters |
+
+### Integrations
+
+| Feature | Description |
+|---------|-------------|
+| **MCP Server** | Standard Model Context Protocol for any compatible agent |
+| **REST API** | Express server on port 9000 for custom integrations |
+| **React Dashboard** | Interactive visualization at port 5173 |
+| **Mermaid Export** | Generate visual diagrams of your architecture |
+
+## Token Savings
+
+Real measurements on GraphHub's own codebase:
+
+| Task | Without | With | Savings |
+|------|---------|------|---------|
+| Find function callers | 9,216 | 507 | **94%** |
+| Impact analysis | 7,281 | 673 | **91%** |
+| List file symbols | 2,745 | 322 | **88%** |
+| Search code logic | 2,115 | 759 | **64%** |
+| Codebase overview | 2,381 | 1,389 | **42%** |
+| **Total** | **23,738** | **3,650** | **85%** |
+
+**Bottom line:** 5x more tasks in the same context window.
+
+## MCP Tools
+
+When connected to Claude Code or other MCP agents:
+
+```typescript
+// Find code by description
+semantic_search({ query: "authentication validation" })
+
+// See callers and callees
+get_context({ name: "validateToken" })
+
+// Check blast radius before editing
+impact_analysis({ name: "handleRequest" })
+
+// Save learnings for future sessions
+remember({ content: "Auth uses JWT middleware", type: "learning" })
+
+// Retrieve past learnings
+recall({ query: "how does auth work?" })
+
+// Run custom Cypher queries
+query_graph({ cypher: "MATCH (s:Symbol)-[:CALLS]->(t:Symbol) RETURN s, t LIMIT 10" })
 ```
 
-This creates a `.graphhub/` directory containing your knowledge graph.
+## Architecture
 
-### Generate the Graph Report
-
-```bash
-npm run report
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│ Source Code │ ──▶ │  Tree-sitter │ ──▶ │ KuzuDB Graph DB │
+└─────────────┘     │    Parser    │     └────────┬────────┘
+                    └──────────────┘              │
+                           │                      │
+                    ┌──────▼──────┐      ┌───────▼───────┐
+                    │  Embeddings │      │   MCP Server  │
+                    │ (MiniLM-L6) │      │  REST API     │
+                    └─────────────┘      │  Dashboard    │
+                                         └───────────────┘
 ```
 
-Creates `.graphhub/GRAPH_REPORT.md` with god nodes, clusters, and session memory.
+**Graph Schema:**
+```
+File ──CONTAINS──▶ Symbol ◀──DESCRIBES── Chunk
+File ──IMPORTS───▶ File
+Symbol ──CALLS──▶ Symbol
+```
 
-### Configure Claude Code (One Command)
+## Language Support
+
+| Language | Support | Parser |
+|----------|---------|--------|
+| TypeScript / TSX | Full | Tree-sitter AST |
+| JavaScript / JSX | Full | Tree-sitter AST |
+| Python | Partial | Text chunker |
+| Go, Rust, Java | Partial | Text chunker |
+| Markdown, Shell | Full | Text chunker |
+
+## Configuration
+
+### Claude Code (Recommended)
 
 ```bash
 npm run install-claude
 ```
 
 This automatically:
-- Adds GraphHub as an MCP server to `.claude/settings.json`
-- Installs a **PreToolUse hook** that reminds Claude about the graph before file searches
-- Installs a **PostToolUse hook** that auto-reindexes after `git commit`
+- Configures MCP server in `.claude/settings.json`
+- Installs PreToolUse hook (graph context before reads)
+- Installs PostToolUse hook (auto-reindex after commits)
 - Updates `CLAUDE.md` with usage instructions
 
-The auto-reindex hook detects new commits and reindexes in the background, keeping the graph fresh without manual intervention.
-
-### Start the MCP Server
-
-```bash
-npm run serve
-```
-
-The MCP server runs over stdio and can be connected to Claude Code or other MCP-compatible AI agents.
-
-### Start the REST API + Dashboard
-
-```bash
-# Install dashboard dependencies first
-cd dashboard && npm install && cd ..
-
-# Start both API server and dashboard
-npm run dashboard
-```
-
-- REST API: http://localhost:9000
-- Dashboard: http://localhost:5173
-
-### Other Commands
-
-```bash
-# Export graph to Mermaid format
-npm run visualize
-
-# Generate documentation for all functions
-npm run docs -- heuristic    # No API needed
-npm run docs -- openai       # Uses OpenAI API
-npm run docs -- anthropic    # Uses Anthropic API
-```
-
-## Architecture
-
-```
-Source Code → Tree-sitter Parser → KuzuDB Knowledge Graph
-                                          ↓
-                              ┌───────────┼───────────┐
-                              ↓           ↓           ↓
-                         MCP Server   REST API   Mermaid Export
-                              ↓           ↓
-                         AI Agents    Dashboard
-```
-
-### Graph Schema
-
-```
-File ──CONTAINS──► Symbol ◄──DESCRIBES── Chunk
-File ──IMPORTS──► File
-Symbol ──CALLS──► Symbol
-```
-
-**Node Types:**
-- `File` — Source files with path and language
-- `Symbol` — Functions, classes, methods, interfaces with metadata (inputs, outputs, calls, doc)
-- `Chunk` — Embedded text chunks for semantic search (384-dim vectors)
-- `FileHash` — SHA-256 hashes for incremental indexing
-
-## MCP Tools
-
-When connected to an AI agent, GraphHub exposes these tools:
-
-| Tool | Description |
-|------|-------------|
-| `query_graph` | Run raw Cypher queries against the knowledge graph |
-| `get_file_symbols` | Get all symbols defined in a specific file |
-| `semantic_search` | Natural language search for code functionality |
-| `get_context` | Get all callers and callees of a symbol |
-| `impact_analysis` | Analyze blast radius — what breaks if you change a symbol |
-| `remember` | Save a learning, decision, or finding to session memory |
-| `recall` | Search session memory using natural language |
-| `forget` | Delete observations from session memory |
-
-### Session Memory Example
-
-```
-# Save what you learned
-remember({content: "Auth flow validates JWT in middleware", type: "learning", related_symbols: ["validateToken"]})
-
-# Retrieve it later (even in a new session)
-recall({query: "how does auth work?"})
-```
-
-## Configuring with Claude Code
-
-Add GraphHub as an MCP server in your Claude Code settings:
-
-```json
-{
-  "mcpServers": {
-    "graphhub": {
-      "command": "npm",
-      "args": ["run", "serve"],
-      "cwd": "/path/to/graphhub"
-    }
-  }
-}
-```
-
-Or use `tsx` directly:
+### Manual Setup
 
 ```json
 {
@@ -189,106 +171,87 @@ Or use `tsx` directly:
 }
 ```
 
-## Language Support
+## Commands
 
-| Language | Status | Method |
-|----------|--------|--------|
-| TypeScript | Full | Tree-sitter AST |
-| JavaScript | Full | Tree-sitter AST |
-| TSX/JSX | Full | Tree-sitter AST |
-| Python | Partial | Text chunker fallback |
-| Go, Rust, Java | Partial | Text chunker fallback |
-| Markdown, Shell | Full | Text chunker |
+| Command | Description |
+|---------|-------------|
+| `npm run index -- <dir>` | Index a directory into the knowledge graph |
+| `npm run serve` | Start MCP server (stdio) |
+| `npm run serve-api` | Start REST API (port 9000) |
+| `npm run dashboard` | Start API + React dashboard |
+| `npm run report` | Generate GRAPH_REPORT.md |
+| `npm run visualize` | Export to Mermaid format |
+| `npm run install-claude` | Configure Claude Code integration |
+| `npm test` | Run test suite |
 
 ## Privacy
 
-- **100% local** — All data stays in `.graphhub/` in your project directory
-- **No external APIs** — Embeddings generated locally with `@xenova/transformers`
-- **No telemetry** — Zero network calls during indexing or querying
+- **100% Local** — All data stays in `.graphhub/` in your project
+- **No External APIs** — Embeddings generated locally with Xenova/transformers
+- **No Telemetry** — Zero network calls during indexing or querying
 
 ## Tech Stack
 
-- **Parser:** web-tree-sitter (WASM)
-- **Database:** KuzuDB (embedded graph database)
-- **Embeddings:** @xenova/transformers (all-MiniLM-L6-v2)
-- **MCP:** @modelcontextprotocol/sdk
-- **API:** Express.js
-- **Dashboard:** React + TypeScript + Vite + React Flow
+| Component | Technology |
+|-----------|------------|
+| Parser | web-tree-sitter (WASM) |
+| Database | KuzuDB (embedded graph) |
+| Embeddings | @xenova/transformers (all-MiniLM-L6-v2) |
+| MCP | @modelcontextprotocol/sdk |
+| API | Express.js |
+| Dashboard | React + Vite + React Flow |
 
-## Development
-
-```bash
-# Run tests
-npm test
-
-# Index GraphHub itself
-npm run index -- ./src
-
-# Start API server only
-npm run serve-api
-```
-
-## Token Reduction (Verified)
-
-Real-world token savings measured on GraphHub's own codebase:
-
-| Task | Traditional | GraphHub | Savings |
-|------|-------------|----------|---------|
-| Find callers of a function | 9,216 tokens | 507 tokens | **94%** |
-| Search for code logic | 2,115 tokens | 759 tokens | **64%** |
-| Impact analysis before edit | 7,281 tokens | 673 tokens | **91%** |
-| List symbols in a file | 2,745 tokens | 322 tokens | **88%** |
-| Get codebase overview | 2,381 tokens | 1,389 tokens | **42%** |
-| **Total (5 tasks)** | **23,738 tokens** | **3,650 tokens** | **85%** |
-
-### What This Means
-
-- **5x more tasks** in the same context window
-- **~20,000 tokens saved** per typical session
-- **Larger codebases** without hitting context limits
-- **Better conversation continuity** (less truncation)
-
-### Cost Savings (Claude Opus)
-
-| Metric | Without GraphHub | With GraphHub |
-|--------|------------------|---------------|
-| Tokens per session | ~24,000 | ~3,700 |
-| Cost per session | ~$0.07 | ~$0.01 |
-| Monthly (20 sessions/day) | ~$42 | ~$6 |
-
-**How it works:** Instead of reading full file contents, Claude queries the knowledge graph for specific symbols and relationships. The graph stores call relationships, so finding "who calls X" is a single query instead of grepping and reading multiple files.
-
-## Comparison with Similar Tools
+## Comparison
 
 | Feature | GraphHub | claude-mem | graphify | cognee |
-|---------|----------|-----------|----------|--------|
-| Code graph | Yes | No | Yes | Limited |
-| Session memory | Yes | Yes | No | Yes |
-| Always-on hooks | Yes | No | Yes | Yes |
-| One-command install | Yes | Yes | Yes | No |
-| 100% local | Yes | Yes | Yes | Optional |
-| Semantic search | Yes | Yes | Yes | Yes |
-| Impact analysis | Yes | No | Yes | No |
+|---------|:--------:|:----------:|:--------:|:------:|
+| Code graph | ✅ | ❌ | ✅ | ⚠️ |
+| Session memory | ✅ | ✅ | ❌ | ✅ |
+| Always-on hooks | ✅ | ❌ | ✅ | ✅ |
+| One-command install | ✅ | ✅ | ✅ | ❌ |
+| 100% local | ✅ | ✅ | ✅ | ⚠️ |
+| Impact analysis | ✅ | ❌ | ✅ | ❌ |
+| Auto-reindex | ✅ | ❌ | ❌ | ❌ |
 
 ## Roadmap
 
 - [x] Session memory (remember/recall/forget)
 - [x] Always-on PreToolUse hooks
-- [x] PostToolUse auto-reindex after git commit
+- [x] PostToolUse auto-reindex
 - [x] Graph report generation
-- [x] One-command Claude Code install
 - [x] Verified 85% token reduction
 - [ ] Worker thread indexing for large repos
 - [ ] `.gitignore` support
-- [ ] INHERITS and IMPLEMENTS edges for class hierarchies
-- [ ] Native Python and Go Tree-sitter grammars
-- [ ] ANN vector index for large-scale semantic search
+- [ ] Class hierarchy edges (INHERITS, IMPLEMENTS)
+- [ ] Native Python/Go Tree-sitter grammars
 - [ ] Community detection (Leiden algorithm)
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+```bash
+# Development setup
+git clone https://github.com/slnquangtran/graphhub.git
+cd graphhub && npm install
+
+# Run tests
+npm test
+
+# Index GraphHub itself for testing
+npm run index -- ./src
+```
 
 ## License
 
-ISC
+[ISC](LICENSE) © 2024
 
 ---
 
-Built for AI agents that need to remember your codebase.
+<div align="center">
+
+**Built for AI agents that need to remember your codebase.**
+
+[Report Bug](https://github.com/slnquangtran/graphhub/issues) · [Request Feature](https://github.com/slnquangtran/graphhub/issues)
+
+</div>
