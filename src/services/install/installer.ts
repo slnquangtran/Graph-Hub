@@ -190,11 +190,11 @@ fi
 
 GRAPHHUB_DIR="${graphhubDirUnix}"
 TARGET_DIR="${targetDirUnix}"
-GRAPHHUB_DB=".graphhub/db"
+GRAPHHUB_DIR_CHECK=".graphhub"
 LAST_INDEX_FILE=".graphhub/.last_index_commit"
 
 # Only run if .graphhub exists (project is indexed)
-if [ ! -d "$GRAPHHUB_DB" ]; then
+if [ ! -d "$GRAPHHUB_DIR_CHECK" ]; then
   exit 0
 fi
 
