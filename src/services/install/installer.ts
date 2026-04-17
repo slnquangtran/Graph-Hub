@@ -2,6 +2,16 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
+interface HookEntry {
+  type: string;
+  command: string;
+}
+
+interface HookConfig {
+  matcher: string;
+  hooks: HookEntry[];
+}
+
 interface ClaudeSettings {
   mcpServers?: Record<string, {
     command: string;
@@ -9,13 +19,8 @@ interface ClaudeSettings {
     cwd?: string;
   }>;
   hooks?: {
-    PreToolUse?: Array<{
-      matcher: string;
-      hooks: Array<{
-        type: string;
-        command: string;
-      }>;
-    }>;
+    PreToolUse?: HookConfig[];
+    PostToolUse?: HookConfig[];
   };
 }
 
@@ -36,14 +41,18 @@ export class Installer {
     await this.configureMcpServer(claudeDir);
 
     // 2. Add PreToolUse hook for always-on graph context
-    await this.configureHooks(claudeDir);
+    await this.configurePreToolHook(claudeDir);
 
-    // 3. Create/update CLAUDE.md with graph instructions
+    // 3. Add PostToolUse hook for auto-reindex after git commit
+    await this.configurePostToolHook(claudeDir, targetDir);
+
+    // 4. Create/update CLAUDE.md with graph instructions
     await this.updateClaudeMd(targetDir);
 
     console.log('GraphHub installed for Claude Code!');
     console.log(`  - MCP server configured in ${path.join(claudeDir, 'settings.json')}`);
     console.log(`  - PreToolUse hook installed for automatic graph context`);
+    console.log(`  - PostToolUse hook installed for auto-reindex after git commit`);
     console.log(`  - CLAUDE.md updated with usage instructions`);
   }
 
@@ -65,8 +74,20 @@ export class Installer {
           h => !h.hooks.some(hook => hook.command.includes('graphhub'))
         );
       }
+      if (settings.hooks?.PostToolUse) {
+        settings.hooks.PostToolUse = settings.hooks.PostToolUse.filter(
+          h => !h.hooks.some(hook => hook.command.includes('graphhub'))
+        );
+      }
 
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+
+      // Remove hook scripts
+      const preHookPath = path.join(targetDir, '.claude', 'graphhub-hook.sh');
+      const postHookPath = path.join(targetDir, '.claude', 'graphhub-post-hook.sh');
+      if (fs.existsSync(preHookPath)) fs.unlinkSync(preHookPath);
+      if (fs.existsSync(postHookPath)) fs.unlinkSync(postHookPath);
+
       console.log('GraphHub uninstalled from Claude Code settings.');
     }
   }
@@ -89,7 +110,7 @@ export class Installer {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   }
 
-  private async configureHooks(claudeDir: string): Promise<void> {
+  private async configurePreToolHook(claudeDir: string): Promise<void> {
     const settingsPath = path.join(claudeDir, 'settings.json');
     let settings: ClaudeSettings = {};
 
@@ -129,6 +150,87 @@ fi
 
       settings.hooks.PreToolUse.push({
         matcher: 'Glob|Grep|Read',
+        hooks: [
+          {
+            type: 'command',
+            command: `bash "${hookScriptPath}"`,
+          },
+        ],
+      });
+    }
+
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  }
+
+  private async configurePostToolHook(claudeDir: string, targetDir: string): Promise<void> {
+    const settingsPath = path.join(claudeDir, 'settings.json');
+    let settings: ClaudeSettings = {};
+
+    if (fs.existsSync(settingsPath)) {
+      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    }
+
+    settings.hooks = settings.hooks || {};
+    settings.hooks.PostToolUse = settings.hooks.PostToolUse || [];
+
+    // Check if hook already exists
+    const hookExists = settings.hooks.PostToolUse.some(
+      h => h.hooks.some(hook => hook.command.includes('graphhub-post-hook'))
+    );
+
+    if (!hookExists) {
+      // Create the post-commit hook script
+      const hookScriptPath = path.join(claudeDir, 'graphhub-post-hook.sh');
+      const graphhubDirUnix = this.graphhubDir.replace(/\\/g, '/');
+      const targetDirUnix = targetDir.replace(/\\/g, '/');
+
+      const hookScript = `#!/bin/bash
+# GraphHub PostToolUse Hook
+# Auto-reindexes the knowledge graph after git commit/merge/rebase
+
+GRAPHHUB_DIR="${graphhubDirUnix}"
+TARGET_DIR="${targetDirUnix}"
+GRAPHHUB_DB=".graphhub/db"
+LAST_INDEX_FILE=".graphhub/.last_index_commit"
+
+# Only run if .graphhub exists (project is indexed)
+if [ ! -d "$GRAPHHUB_DB" ]; then
+  exit 0
+fi
+
+# Get current HEAD commit
+CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null)
+if [ -z "$CURRENT_COMMIT" ]; then
+  exit 0
+fi
+
+# Check if we already indexed this commit
+if [ -f "$LAST_INDEX_FILE" ]; then
+  LAST_INDEXED=$(cat "$LAST_INDEX_FILE")
+  if [ "$CURRENT_COMMIT" = "$LAST_INDEXED" ]; then
+    exit 0
+  fi
+fi
+
+# New commit detected - reindex
+echo "---"
+echo "GraphHub: New commit detected, auto-reindexing..."
+
+# Run reindex in background to not block Claude
+(
+  cd "$GRAPHHUB_DIR" && \\
+  npx tsx src/index.ts index "$TARGET_DIR" > /dev/null 2>&1 && \\
+  npx tsx src/index.ts report > /dev/null 2>&1 && \\
+  echo "$CURRENT_COMMIT" > "$TARGET_DIR/$LAST_INDEX_FILE"
+) &
+
+echo "   Reindex started in background."
+echo "---"
+`;
+      fs.writeFileSync(hookScriptPath, hookScript, { mode: 0o755 });
+
+      settings.hooks.PostToolUse.push({
+        matcher: 'Bash',
         hooks: [
           {
             type: 'command',

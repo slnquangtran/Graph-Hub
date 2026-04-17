@@ -69,8 +69,11 @@ npm run install-claude
 
 This automatically:
 - Adds GraphHub as an MCP server to `.claude/settings.json`
-- Installs a PreToolUse hook that reminds Claude about the graph before file searches
+- Installs a **PreToolUse hook** that reminds Claude about the graph before file searches
+- Installs a **PostToolUse hook** that auto-reindexes after `git commit`
 - Updates `CLAUDE.md` with usage instructions
+
+The auto-reindex hook detects new commits and reindexes in the background, keeping the graph fresh without manual intervention.
 
 ### Start the MCP Server
 
