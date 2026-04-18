@@ -22,6 +22,7 @@ async function main() {
     await service.indexDirectory(targetDir);
     await service.resolveImports();
     await service.resolveCalls();
+    await service.resolveInheritance();
     console.error('Indexing complete.');
     process.exit(0);
   } else if (command === 'serve') {

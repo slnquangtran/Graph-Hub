@@ -20,6 +20,8 @@ export interface SymbolDefinition {
   outputs?: string[];
   technicalDebt?: string[];
   status?: 'Done' | 'Incomplete';
+  extends?: string;
+  implements?: string[];
 }
 
 export class CodeParser {
@@ -158,11 +160,37 @@ export class CodeParser {
           pendingComments = [];
           break;
         case 'class_declaration':
+          const className = node.childForFieldName('name')?.text || 'anonymous';
+          let extendsClass: string | undefined;
+          let implementsInterfaces: string[] = [];
+
+          // Extract extends clause (heritage clause with 'extends')
+          const heritageClause = node.descendantsOfType('extends_clause')[0];
+          if (heritageClause) {
+            const typeNode = heritageClause.child(1); // First child after 'extends' keyword
+            if (typeNode) {
+              extendsClass = typeNode.text.split('<')[0].trim(); // Remove generics
+            }
+          }
+
+          // Extract implements clause
+          const implementsClause = node.descendantsOfType('implements_clause')[0];
+          if (implementsClause) {
+            for (let i = 1; i < implementsClause.childCount; i++) {
+              const child = implementsClause.child(i);
+              if (child && child.type !== ',' && child.type !== 'implements') {
+                implementsInterfaces.push(child.text.split('<')[0].trim());
+              }
+            }
+          }
+
           symbol = {
-            name: node.childForFieldName('name')?.text || 'anonymous',
+            name: className,
             kind: 'class',
             range: this.getRange(node),
-            doc: pendingComments.join('\n')
+            doc: pendingComments.join('\n'),
+            extends: extendsClass,
+            implements: implementsInterfaces.length > 0 ? implementsInterfaces : undefined
           };
           pendingComments = [];
           break;
@@ -326,11 +354,30 @@ export class CodeParser {
           break;
 
         case 'class_definition':
+          const pyClassName = node.childForFieldName('name')?.text || 'anonymous';
+          let pyExtendsClass: string | undefined;
+
+          // Extract base classes from argument_list (Python inheritance)
+          const superclasses = node.childForFieldName('superclasses');
+          if (superclasses) {
+            // First base class is the primary parent
+            for (let i = 0; i < superclasses.childCount; i++) {
+              const child = superclasses.child(i);
+              if (child && child.type === 'identifier') {
+                if (!pyExtendsClass) {
+                  pyExtendsClass = child.text;
+                }
+                break; // Only capture first parent for INHERITS
+              }
+            }
+          }
+
           symbol = {
-            name: node.childForFieldName('name')?.text || 'anonymous',
+            name: pyClassName,
             kind: 'class',
             range: this.getRange(node),
             doc: pendingComments.join('\n'),
+            extends: pyExtendsClass
           };
           pendingComments = [];
           break;

@@ -53,8 +53,8 @@ Parse a codebase and generate a structured knowledge graph in KuzuDB, suitable f
 | `IMPORTS` | File → File (resolved from `import` symbols) | ✅ |
 | `CALLS` | Symbol → Symbol (resolved by matching `calls[]` list against symbol names in imported files, with heuristic fallback) | ✅ |
 | `DESCRIBES` | Chunk → Symbol (linked during embedding creation) | ✅ |
-| `INHERITS` | Class → Class (via `extends`) | ❌ Not yet |
-| `IMPLEMENTS` | Class → Interface | ❌ Not yet |
+| `INHERITS` | Class → Class (via `extends`) | ✅ Implemented |
+| `IMPLEMENTS` | Class → Interface | ✅ Implemented |
 
 ### 5. Incremental Indexing ✅ Implemented
 
@@ -95,6 +95,6 @@ CREATE REL TABLE DESCRIBES(FROM Chunk TO Symbol)
 
 1. **Worker thread indexing** — offload file parsing to `worker_threads` to prevent blocking the event loop during large repo indexing.
 2. ~~**`.gitignore` support**~~ ✅ **Implemented** — reads `.gitignore` from root directory and respects patterns during indexing.
-3. **`INHERITS` and `IMPLEMENTS` edges** — extend `CodeParser` to extract `extends` and `implements` clauses from class declarations.
+3. ~~**`INHERITS` and `IMPLEMENTS` edges**~~ ✅ **Implemented** — extracts `extends` and `implements` clauses from TypeScript/JavaScript/Python classes.
 4. **Python/Go grammars** — add `tree-sitter-python` and `tree-sitter-go` for full AST symbol extraction.
 5. **ANN vector index** — enable Kuzu's approximate nearest neighbor index on `Chunk.embedding` for large repos.

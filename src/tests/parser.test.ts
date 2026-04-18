@@ -61,12 +61,82 @@ describe('CodeParser', () => {
       const add = (a: number, b: number): number => a + b;
     `;
     const symbols = parser.parse(code, 'typescript');
-    
+
     expect(symbols).toContainEqual(expect.objectContaining({
       name: 'add',
       kind: 'function',
       inputs: ['a: number', 'b: number'],
       outputs: ['number']
     }));
+  });
+
+  it('should extract class inheritance (extends)', () => {
+    const code = `
+      class Animal {
+        move() { return "moving"; }
+      }
+      class Dog extends Animal {
+        bark() { return "woof"; }
+      }
+    `;
+    const symbols = parser.parse(code, 'typescript');
+
+    const dog = symbols.find(s => s.name === 'Dog');
+    expect(dog).toBeDefined();
+    expect(dog?.extends).toBe('Animal');
+  });
+
+  it('should extract interface implementation (implements)', () => {
+    const code = `
+      interface Runnable {
+        run(): void;
+      }
+      interface Stoppable {
+        stop(): void;
+      }
+      class Service implements Runnable, Stoppable {
+        run() {}
+        stop() {}
+      }
+    `;
+    const symbols = parser.parse(code, 'typescript');
+
+    const service = symbols.find(s => s.name === 'Service');
+    expect(service).toBeDefined();
+    expect(service?.implements).toContain('Runnable');
+    expect(service?.implements).toContain('Stoppable');
+  });
+
+  it('should extract combined extends and implements', () => {
+    const code = `
+      class BaseController {}
+      interface Loggable {}
+      class UserController extends BaseController implements Loggable {
+        getUser() {}
+      }
+    `;
+    const symbols = parser.parse(code, 'typescript');
+
+    const controller = symbols.find(s => s.name === 'UserController');
+    expect(controller).toBeDefined();
+    expect(controller?.extends).toBe('BaseController');
+    expect(controller?.implements).toContain('Loggable');
+  });
+
+  it('should extract Python class inheritance', () => {
+    const code = `
+class Animal:
+    def move(self):
+        pass
+
+class Dog(Animal):
+    def bark(self):
+        pass
+    `;
+    const symbols = parser.parse(code, 'python');
+
+    const dog = symbols.find(s => s.name === 'Dog');
+    expect(dog).toBeDefined();
+    expect(dog?.extends).toBe('Animal');
   });
 });
