@@ -134,7 +134,7 @@ export class IngestionService {
       
       await this.db.runCypher(
         'MERGE (s:Symbol {id: $id}) ' +
-        'SET s.name = $name, s.kind = $kind, s.range = $range, s.calls = $calls, s.import_source = $importSource, s.import_specifiers = $importSpecifiers, s.inputs = $inputs, s.outputs = $outputs',
+        'SET s.name = $name, s.kind = $kind, s.range = $range, s.calls = $calls, s.import_source = $importSource, s.import_specifiers = $importSpecifiers, s.inputs = $inputs, s.outputs = $outputs, s.extends = $extends, s.implements = $implements',
         {
           id: symId,
           name: sym.name,
@@ -144,7 +144,9 @@ export class IngestionService {
           importSource: sym.imports?.[0]?.source || '',
           importSpecifiers: sym.imports?.[0]?.specifiers || [],
           inputs: sym.inputs || [],
-          outputs: sym.outputs || []
+          outputs: sym.outputs || [],
+          extends: sym.extends || '',
+          implements: sym.implements || []
         }
       );
 
@@ -306,6 +308,76 @@ export class IngestionService {
       console.log('Call resolution complete.');
     } catch (error) {
       console.error('Error during call resolution:', error);
+    }
+  }
+
+  public async resolveInheritance(): Promise<void> {
+    console.log('Resolving class inheritance relationships...');
+    try {
+      // 1. INHERITS: Class extends another class
+      // First try same-file resolution (most common)
+      await this.db.runCypher(
+        'MATCH (f:File)-[:CONTAINS]->(child:Symbol {kind: "class"}) ' +
+        'WHERE child.extends <> "" ' +
+        'MATCH (f)-[:CONTAINS]->(parent:Symbol {kind: "class", name: child.extends}) ' +
+        'MERGE (child)-[:INHERITS]->(parent)'
+      );
+
+      // Then try cross-file resolution via imports
+      await this.db.runCypher(
+        'MATCH (f1:File)-[r:IMPORTS]->(f2:File) ' +
+        'MATCH (f1)-[:CONTAINS]->(child:Symbol {kind: "class"}) ' +
+        'WHERE child.extends <> "" AND child.extends IN r.specifiers ' +
+        'MATCH (f2)-[:CONTAINS]->(parent:Symbol {kind: "class", name: child.extends}) ' +
+        'MERGE (child)-[:INHERITS]->(parent)'
+      );
+
+      // Global fallback for unresolved inheritance
+      await this.db.runCypher(
+        'MATCH (child:Symbol {kind: "class"}) ' +
+        'WHERE child.extends <> "" ' +
+        'AND NOT EXISTS { MATCH (child)-[:INHERITS]->() } ' +
+        'MATCH (parent:Symbol {kind: "class", name: child.extends}) ' +
+        'WHERE child.id <> parent.id ' +
+        'MERGE (child)-[:INHERITS]->(parent)'
+      );
+
+      // 2. IMPLEMENTS: Class implements interface(s)
+      // Same-file resolution
+      await this.db.runCypher(
+        'MATCH (f:File)-[:CONTAINS]->(cls:Symbol {kind: "class"}) ' +
+        'WHERE size(cls.implements) > 0 ' +
+        'UNWIND cls.implements AS ifaceName ' +
+        'MATCH (f)-[:CONTAINS]->(iface:Symbol {kind: "interface", name: ifaceName}) ' +
+        'MERGE (cls)-[:IMPLEMENTS]->(iface)'
+      );
+
+      // Cross-file resolution via imports
+      await this.db.runCypher(
+        'MATCH (f1:File)-[r:IMPORTS]->(f2:File) ' +
+        'MATCH (f1)-[:CONTAINS]->(cls:Symbol {kind: "class"}) ' +
+        'WHERE size(cls.implements) > 0 ' +
+        'UNWIND cls.implements AS ifaceName ' +
+        'WITH f2, cls, ifaceName, r ' +
+        'WHERE ifaceName IN r.specifiers ' +
+        'MATCH (f2)-[:CONTAINS]->(iface:Symbol {kind: "interface", name: ifaceName}) ' +
+        'MERGE (cls)-[:IMPLEMENTS]->(iface)'
+      );
+
+      // Global fallback for unresolved implements
+      await this.db.runCypher(
+        'MATCH (cls:Symbol {kind: "class"}) ' +
+        'WHERE size(cls.implements) > 0 ' +
+        'UNWIND cls.implements AS ifaceName ' +
+        'WITH cls, ifaceName ' +
+        'WHERE NOT EXISTS { MATCH (cls)-[:IMPLEMENTS]->(i:Symbol {name: ifaceName}) } ' +
+        'MATCH (iface:Symbol {kind: "interface", name: ifaceName}) ' +
+        'MERGE (cls)-[:IMPLEMENTS]->(iface)'
+      );
+
+      console.log('Inheritance resolution complete.');
+    } catch (error) {
+      console.error('Error during inheritance resolution:', error);
     }
   }
 
