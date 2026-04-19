@@ -53,6 +53,9 @@ That's it. Claude now has persistent memory of your codebase.
 | **Semantic Search** | Natural language queries via local embeddings (no API costs) |
 | **Impact Analysis** | See what breaks before you edit — direct and indirect callers |
 | **Session Memory** | `remember` and `recall` persist learnings across sessions |
+| **Pattern Memory** | Recall prior bug fixes and skill routing by similarity, across sessions |
+| **One-Shot Debug** | `debug_trace` chains search → context → impact in a single call |
+| **Batch Context** | Look up callers/callees for many symbols in one round trip |
 
 ### Developer Experience
 
@@ -104,11 +107,30 @@ impact_analysis({ name: "handleRequest" })
 // One-shot debugging: search + context + impact in a single call
 debug_trace({ query: "null pointer in auth middleware", top_k: 3 })
 
+// Bulk lookup: callers/callees counts for many symbols at once
+batch_context({ names: ["validateToken", "handleRequest", "parseBody"] })
+
 // Save learnings for future sessions
 remember({ content: "Auth uses JWT middleware", type: "learning" })
 
 // Retrieve past learnings
 recall({ query: "how does auth work?" })
+
+// Remember a bug fix, then recall it by symptom next time
+remember_bugfix({
+  symptom: "TypeError: Cannot read property user of undefined",
+  root_cause: "req.session was null on the /guest route",
+  fix: "Added session guard at middleware entry",
+})
+recall_bugfix({ symptom: "undefined user property on guest route" })
+
+// Cache which SKILL.md worked for a task, recall it for similar tasks
+remember_skill_choice({
+  task_description: "rename a function safely across the repo",
+  skill_path: ".claude/skills/gitnexus/gitnexus-refactoring/SKILL.md",
+  outcome: "success",
+})
+recall_skill_choice({ task_description: "rename a symbol in multiple files" })
 
 // Run custom Cypher queries
 query_graph({ cypher: "MATCH (s:Symbol)-[:CALLS]->(t:Symbol) RETURN s, t LIMIT 10" })
@@ -134,6 +156,8 @@ query_graph({ cypher: "MATCH (s:Symbol)-[:CALLS]->(t:Symbol) RETURN s, t LIMIT 1
 File ──CONTAINS──▶ Symbol ◀──DESCRIBES── Chunk
 File ──IMPORTS───▶ File
 Symbol ──CALLS──▶ Symbol
+Symbol ──INHERITS──▶ Symbol
+Symbol ──IMPLEMENTS──▶ Symbol
 ```
 
 ## Language Support
@@ -223,9 +247,11 @@ This automatically:
 - [x] PostToolUse auto-reindex
 - [x] Graph report generation
 - [x] Verified 85% token reduction
+- [x] Class hierarchy edges (INHERITS, IMPLEMENTS)
+- [x] One-shot `debug_trace` and bulk `batch_context`
+- [x] Pattern memory for bug fixes and skill routing
 - [ ] Worker thread indexing for large repos
 - [ ] `.gitignore` support
-- [ ] Class hierarchy edges (INHERITS, IMPLEMENTS)
 - [ ] Native Python/Go Tree-sitter grammars
 - [ ] Community detection (Leiden algorithm)
 
