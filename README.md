@@ -30,18 +30,31 @@ GraphHub:    get_context("functionName") → 507 tokens (94% savings)
 ## Quick Start
 
 ```bash
-# Clone and install
-git clone https://github.com/slnquangtran/graphhub.git
-cd graphhub && npm install
-
-# Index your project
-npm run index -- /path/to/your/project
-
-# Configure Claude Code (one command)
-npm run install-claude
+# One command — sets up every MCP client present in your project
+npm install graphhub
 ```
 
-That's it. Claude now has persistent memory of your codebase.
+Detects and configures Claude Code, OpenCode, Gemini CLI, and Antigravity in one pass. Or explicitly:
+
+```bash
+npx graphhub setup                               # detect + install for present clients
+npx graphhub setup --force                       # install for all 4 clients
+npx graphhub setup --client claude-code,opencode # pick specific clients
+npx graphhub setup --dry-run                     # preview detection
+npx graphhub setup --list                        # list supported clients
+npx graphhub uninstall-all                       # remove graphhub from all clients
+```
+
+Prefer a local clone?
+
+```bash
+git clone https://github.com/slnquangtran/graphhub.git
+cd graphhub && npm install
+npm run index -- /path/to/your/project
+npm run setup -- /path/to/your/project
+```
+
+That's it. Your agent now has persistent memory of your codebase.
 
 ## Features
 
@@ -61,7 +74,8 @@ That's it. Claude now has persistent memory of your codebase.
 
 | Feature | Description |
 |---------|-------------|
-| **One-Command Setup** | `npm run install-claude` configures everything |
+| **One-Command Setup** | `npm install graphhub` configures all supported MCP clients |
+| **Multi-Client Support** | Claude Code, OpenCode, Gemini CLI, Antigravity — detected and installed together |
 | **Auto-Reindex** | PostToolUse hook keeps graph fresh after commits |
 | **Always-On Context** | PreToolUse hook reminds Claude about the graph |
 | **Graph Report** | Auto-generated overview with god nodes and clusters |
@@ -172,17 +186,30 @@ Symbol ──IMPLEMENTS──▶ Symbol
 
 ## Configuration
 
-### Claude Code (Recommended)
+### All Clients (Recommended)
+
+```bash
+npx graphhub setup
+```
+
+Auto-detects and configures every supported client present in the project:
+
+| Client | Config File |
+|--------|-------------|
+| Claude Code | `.claude/settings.json` |
+| OpenCode | `opencode.json` |
+| Gemini CLI | `.gemini/settings.json` |
+| Antigravity | `.antigravity/mcp.json` |
+
+Existing keys are preserved — only the `graphhub` entry is added. Use `--force` to install for clients that aren't yet present. A `postinstall` hook runs the same flow after `npm install graphhub`; opt out with `GRAPHHUB_NO_INSTALL=1`, `CI=1`, or `npm_config_global=true`.
+
+### Claude Code (legacy, Claude-only hooks + CLAUDE.md)
 
 ```bash
 npm run install-claude
 ```
 
-This automatically:
-- Configures MCP server in `.claude/settings.json`
-- Installs PreToolUse hook (graph context before reads)
-- Installs PostToolUse hook (auto-reindex after commits)
-- Updates `CLAUDE.md` with usage instructions
+Adds the PreToolUse/PostToolUse hooks and updates `CLAUDE.md`. The multi-client `setup` above covers MCP config only.
 
 ### Manual Setup
 
@@ -208,7 +235,9 @@ This automatically:
 | `npm run dashboard` | Start API + React dashboard |
 | `npm run report` | Generate GRAPH_REPORT.md |
 | `npm run visualize` | Export to Mermaid format |
-| `npm run install-claude` | Configure Claude Code integration |
+| `npm run setup` | Configure all supported MCP clients (Claude Code, OpenCode, Gemini CLI, Antigravity) |
+| `npm run uninstall-all` | Remove graphhub entry from all clients |
+| `npm run install-claude` | Configure Claude Code hooks + CLAUDE.md (legacy, Claude-only) |
 | `npm test` | Run test suite |
 
 ## Privacy
@@ -250,6 +279,7 @@ This automatically:
 - [x] Class hierarchy edges (INHERITS, IMPLEMENTS)
 - [x] One-shot `debug_trace` and bulk `batch_context`
 - [x] Pattern memory for bug fixes and skill routing
+- [x] One-command multi-client setup (Claude Code, OpenCode, Gemini CLI, Antigravity)
 - [ ] Worker thread indexing for large repos
 - [ ] `.gitignore` support
 - [ ] Native Python/Go Tree-sitter grammars
