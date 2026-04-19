@@ -6,16 +6,33 @@ import { CodeParser, SymbolDefinition } from './parser.ts';
 import { GraphClient } from '../db/graph-client.ts';
 import { EmbeddingService } from '../ai/embedding-service.ts';
 
+export interface IndexStats {
+  indexed: number;
+  skipped: number;
+  removed: number;
+  errors: number;
+  elapsed_ms: number;
+}
+
 export class IngestionService {
   private parser: CodeParser;
   private db: GraphClient;
   private embeddingService: EmbeddingService;
   private gitignoreCache: Map<string, Ignore> = new Map();
+  private runStats: { indexed: number; skipped: number; errors: number } = { indexed: 0, skipped: 0, errors: 0 };
 
   constructor() {
     this.parser = new CodeParser();
     this.db = GraphClient.getInstance();
     this.embeddingService = EmbeddingService.getInstance();
+  }
+
+  public resetStats(): void {
+    this.runStats = { indexed: 0, skipped: 0, errors: 0 };
+  }
+
+  public getStats(): { indexed: number; skipped: number; errors: number } {
+    return { ...this.runStats };
   }
 
   private async loadGitignore(rootDir: string): Promise<Ignore> {
@@ -93,6 +110,7 @@ export class IngestionService {
     const content = await fs.readFile(absolutePath, 'utf8');
 
     if (!force && !(await this.isFileStale(absolutePath, content))) {
+      this.runStats.skipped++;
       return; // Skip unchanged file
     }
 
@@ -176,6 +194,7 @@ export class IngestionService {
     }
 
     await this.markFileIndexed(absolutePath, content);
+    this.runStats.indexed++;
     console.log(`Indexed ${filePath} with ${symbols.length} symbols.`);
   }
 
@@ -184,6 +203,7 @@ export class IngestionService {
     const content = await fs.readFile(absolutePath, 'utf8');
 
     if (!force && !(await this.isFileStale(absolutePath, content))) {
+      this.runStats.skipped++;
       return; // Skip unchanged file
     }
 
@@ -232,7 +252,35 @@ export class IngestionService {
       );
     }
     await this.markFileIndexed(absolutePath, content);
+    this.runStats.indexed++;
     console.log(`Indexed generic fallback file ${filePath}.`);
+  }
+
+  public async removeFileFromGraph(absolutePath: string): Promise<void> {
+    await this.db.runCypher(
+      'MATCH (f:File {path: $path}) ' +
+      'OPTIONAL MATCH (f)-[:CONTAINS]->(s:Symbol) ' +
+      'OPTIONAL MATCH (c:Chunk)-[:DESCRIBES]->(s) ' +
+      'DETACH DELETE s, c, f',
+      { path: absolutePath },
+    ).catch(() => {});
+    await this.db.runCypher(
+      'MATCH (h:FileHash {path: $path}) DELETE h',
+      { path: absolutePath },
+    ).catch(() => {});
+  }
+
+  public async removeOrphanedFiles(presentPaths: Set<string>): Promise<string[]> {
+    const res = await this.db.runCypher('MATCH (f:File) RETURN f.path AS path');
+    const rows = (await res.getAll()) as Array<{ path: string }>;
+    const removed: string[] = [];
+    for (const row of rows) {
+      if (!presentPaths.has(row.path)) {
+        await this.removeFileFromGraph(row.path);
+        removed.push(row.path);
+      }
+    }
+    return removed;
   }
 
   private async resolveImportPath(sourcePath: string, importSource: string): Promise<string | null> {
@@ -381,8 +429,9 @@ export class IngestionService {
     }
   }
 
-  public async indexDirectory(dirPath: string, rootDir?: string): Promise<void> {
+  public async indexDirectory(dirPath: string, rootDir?: string, visited?: Set<string>): Promise<Set<string>> {
     const root = rootDir || dirPath;
+    const seen = visited ?? new Set<string>();
     const ig = await this.loadGitignore(root);
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
@@ -390,26 +439,48 @@ export class IngestionService {
       const fullPath = path.join(dirPath, entry.name);
       const relativePath = path.relative(root, fullPath);
 
-      // Check if path should be ignored (gitignore patterns)
-      if (ig.ignores(relativePath) || ig.ignores(relativePath + '/')) {
-        continue;
-      }
+      if (ig.ignores(relativePath) || ig.ignores(relativePath + '/')) continue;
 
       if (entry.isDirectory()) {
-        await this.indexDirectory(fullPath, root);
+        await this.indexDirectory(fullPath, root, seen);
       } else {
         const ext = path.extname(entry.name);
-        // Languages with full AST parsing support
         const parsedExtensions = ['.ts', '.js', '.tsx', '.jsx', '.py'];
-        // Languages that fall back to text chunking
         const fallbackExtensions = ['.java', '.c', '.cpp', '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.md', '.txt', '.sh', '.ps1'];
 
         if (parsedExtensions.includes(ext.toLowerCase())) {
           await this.indexFile(fullPath);
+          seen.add(path.resolve(fullPath));
         } else if (fallbackExtensions.includes(ext.toLowerCase())) {
           await this.indexFileFallback(fullPath);
+          seen.add(path.resolve(fullPath));
         }
       }
     }
+    return seen;
+  }
+
+  public async indexDirectoryWithStats(dirPath: string, options: { clean?: boolean } = {}): Promise<IndexStats> {
+    this.resetStats();
+    const start = Date.now();
+    const seen = await this.indexDirectory(dirPath);
+    let removed = 0;
+    if (options.clean) {
+      const orphans = await this.removeOrphanedFiles(seen);
+      removed = orphans.length;
+    }
+    const elapsed_ms = Date.now() - start;
+    return { ...this.runStats, removed, elapsed_ms };
+  }
+
+  public async indexSingle(filePath: string, force = false): Promise<'indexed' | 'skipped' | 'unsupported'> {
+    const ext = path.extname(filePath).toLowerCase();
+    const parsedExtensions = ['.ts', '.js', '.tsx', '.jsx', '.py'];
+    const fallbackExtensions = ['.java', '.c', '.cpp', '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.md', '.txt', '.sh', '.ps1'];
+    const before = this.runStats.indexed;
+    if (parsedExtensions.includes(ext)) await this.indexFile(filePath, force);
+    else if (fallbackExtensions.includes(ext)) await this.indexFileFallback(filePath, force);
+    else return 'unsupported';
+    return this.runStats.indexed > before ? 'indexed' : 'skipped';
   }
 }

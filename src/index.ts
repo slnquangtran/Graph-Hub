@@ -16,15 +16,45 @@ async function main() {
     const service = new IngestionService();
     console.error('--- GraphHub Indexer Starting ---');
     await service.initialize();
-    
-    const targetDir = args[1] || './src';
-    console.error(`Indexing directory: ${path.resolve(targetDir)}`);
-    await service.indexDirectory(targetDir);
+
+    const positional = args.slice(1).filter((a) => !a.startsWith('--'));
+    const targetDir = positional[0] || './src';
+    const clean = args.includes('--clean');
+    console.error(`Indexing directory: ${path.resolve(targetDir)}  clean=${clean}`);
+    const stats = await service.indexDirectoryWithStats(targetDir, { clean });
     await service.resolveImports();
     await service.resolveCalls();
     await service.resolveInheritance();
-    console.error('Indexing complete.');
+    console.error(
+      `Indexing complete. indexed=${stats.indexed} skipped=${stats.skipped} removed=${stats.removed} errors=${stats.errors} elapsed=${stats.elapsed_ms}ms`,
+    );
     process.exit(0);
+  } else if (command === 'watch') {
+    const { WatchService } = await import('./services/ingestion/watch-service.ts');
+    const service = new IngestionService();
+    console.error('--- GraphHub Watch Mode ---');
+    await service.initialize();
+    const targetDir = args[1] || './src';
+    console.error(`Priming index: ${path.resolve(targetDir)}`);
+    const stats = await service.indexDirectoryWithStats(targetDir, { clean: true });
+    await service.resolveImports();
+    await service.resolveCalls();
+    await service.resolveInheritance();
+    console.error(
+      `Primed. indexed=${stats.indexed} skipped=${stats.skipped} removed=${stats.removed} elapsed=${stats.elapsed_ms}ms`,
+    );
+    const watcher = new WatchService(service);
+    await watcher.start(targetDir, {
+      onEvent: (kind, file) => {
+        if (kind === 'unsupported' || kind === 'skipped') return;
+        const rel = path.relative(process.cwd(), file);
+        console.error(`[${kind}] ${rel}`);
+      },
+    });
+    console.error(`Watching ${path.resolve(targetDir)} (Ctrl-C to stop)`);
+    const shutdown = async () => { await watcher.stop(); process.exit(0); };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
   } else if (command === 'serve') {
     const server = new GraphHubMCPServer();
     console.error('--- GraphHub MCP Server Starting ---');
@@ -91,7 +121,8 @@ async function main() {
     console.error('Usage: tsx src/index.ts <command> [options]');
     console.error('');
     console.error('Commands:');
-    console.error('  index <dir>              Index a directory into the knowledge graph');
+    console.error('  index <dir> [--clean]    Index a directory (--clean removes files no longer on disk)');
+    console.error('  watch <dir>              Incrementally re-index on file change');
     console.error('  serve                    Start the MCP server (stdio)');
     console.error('  serve-api                Start the REST API server (port 9000)');
     console.error('  visualize [out.mermaid]  Export the graph to Mermaid format');

@@ -10,6 +10,7 @@ import { ObservationService, ObservationType, ImportanceLevel } from "../memory/
 import { DebugTraceService } from "../debug/trace-service.ts";
 import { BatchContextService } from "../debug/batch-context-service.ts";
 import { PatternMemoryService } from "../memory/pattern-memory-service.ts";
+import { ChangedSymbolsService } from "../debug/changed-symbols-service.ts";
 
 const OBSERVATION_TYPES = ['learning', 'decision', 'finding', 'context', 'bugfix', 'feature', 'refactor', 'discovery', 'change', 'warning', 'todo'];
 const IMPORTANCE_LEVELS = ['low', 'medium', 'high', 'critical'];
@@ -22,6 +23,7 @@ export class GraphHubMCPServer {
   private debug: DebugTraceService;
   private batchContext: BatchContextService;
   private patterns: PatternMemoryService;
+  private changedSymbols: ChangedSymbolsService;
 
   constructor() {
     this.db = GraphClient.getInstance();
@@ -30,6 +32,7 @@ export class GraphHubMCPServer {
     this.debug = DebugTraceService.getInstance();
     this.batchContext = BatchContextService.getInstance();
     this.patterns = PatternMemoryService.getInstance();
+    this.changedSymbols = ChangedSymbolsService.getInstance();
     this.server = new Server(
       {
         name: "graphhub",
@@ -433,6 +436,19 @@ export class GraphHubMCPServer {
             required: ["names"],
           },
         },
+        {
+          name: "changed_symbols",
+          description: "List the symbols in files changed by the current branch (or working tree / staged diff). Each entry includes a direct-caller count and risk bucket so agents know where breakage is most likely. Use this before committing or when reviewing a PR.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              since: { type: "string", description: "Git ref to diff against (e.g. 'master', 'HEAD~1'). If omitted, falls back to working-tree or staged diff." },
+              staged: { type: "boolean", description: "If true, use 'git diff --cached'. Ignored when 'since' is given." },
+              include_callers: { type: "boolean", description: "If true, include the first N direct callers per changed symbol (default: false)" },
+              max_callers: { type: "number", description: "Cap direct callers per symbol when include_callers is true (default: 5)" },
+            },
+          },
+        },
       ],
     }));
 
@@ -664,6 +680,17 @@ export class GraphHubMCPServer {
             const result = await this.batchContext.fetch(args?.names as string[], {
               compact: args?.compact as boolean | undefined,
               max_neighbors: args?.max_neighbors as number | undefined,
+            });
+            return {
+              content: [{ type: "text", text: JSON.stringify(result) }],
+            };
+          }
+          case "changed_symbols": {
+            const result = await this.changedSymbols.list({
+              since: args?.since as string | undefined,
+              staged: args?.staged as boolean | undefined,
+              include_callers: args?.include_callers as boolean | undefined,
+              max_callers: args?.max_callers as number | undefined,
             });
             return {
               content: [{ type: "text", text: JSON.stringify(result) }],
