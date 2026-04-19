@@ -157,7 +157,8 @@ secret.ts
       service.clearGitignoreCache();
 
       // Should complete without error, skipping node_modules by default
-      await expect(service.indexDirectory(noGitignoreDir)).resolves.toBeUndefined();
+      const visited = await service.indexDirectory(noGitignoreDir);
+      expect(visited).toBeInstanceOf(Set);
     });
   });
 });
