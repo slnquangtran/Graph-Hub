@@ -257,18 +257,6 @@ Adds the PreToolUse/PostToolUse hooks and updates `CLAUDE.md`. The multi-client 
 | API | Express.js |
 | Dashboard | React + Vite + React Flow |
 
-## Comparison
-
-| Feature | GraphHub | claude-mem | graphify | cognee |
-|---------|:--------:|:----------:|:--------:|:------:|
-| Code graph | ✅ | ❌ | ✅ | ⚠️ |
-| Session memory | ✅ | ✅ | ❌ | ✅ |
-| Always-on hooks | ✅ | ❌ | ✅ | ✅ |
-| One-command install | ✅ | ✅ | ✅ | ❌ |
-| 100% local | ✅ | ✅ | ✅ | ⚠️ |
-| Impact analysis | ✅ | ❌ | ✅ | ❌ |
-| Auto-reindex | ✅ | ❌ | ❌ | ❌ |
-
 ## Roadmap
 
 - [x] Session memory (remember/recall/forget)
