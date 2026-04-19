@@ -13,6 +13,7 @@ dist
 # Scratch/test files
 scratch/
 **/context.md
+claude.md
 
 # Editor
 .vscode/
