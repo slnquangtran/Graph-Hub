@@ -15,6 +15,13 @@ scratch/
 **/context.md
 claude.md
 
+# Internal docs kept locally only
+CLAUDE.md
+agents.md
+workspace.md
+dashboard/DESIGN.md
+planning/
+
 # Editor
 .vscode/
 .idea/
