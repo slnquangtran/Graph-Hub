@@ -470,8 +470,9 @@ export class GraphHubMCPServer {
               "MATCH (f:File {path: $path})-[:CONTAINS]->(s:Symbol) RETURN s.name, s.kind, s.range",
               { path: args?.path as string }
             );
+            const rows = await result.getAll();
             return {
-              content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+              content: [{ type: "text", text: JSON.stringify(rows, null, 2) }],
             };
           }
           case "semantic_search": {

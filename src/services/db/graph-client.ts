@@ -14,6 +14,13 @@ export class GraphClient {
     }
     this.db = new kuzu.Database(dbPath);
     this.conn = new kuzu.Connection(this.db);
+
+    // Safety net: release the file lock synchronously on any process exit so
+    // subsequent processes (CLI, watch, tests) can open the database immediately.
+    process.on('exit', () => {
+      try { if ((this as any).conn) (this as any).conn.closeSync(); } catch {}
+      try { if ((this as any).db) (this as any).db.closeSync(); } catch {}
+    });
   }
 
   public static getInstance(): GraphClient {
@@ -67,7 +74,8 @@ export class GraphClient {
   }
 
   public async close(): Promise<void> {
-    // Kuzu node bindings handle cleanup, but we can explicitly nullify
+    try { if ((this as any).conn) await (this as any).conn.close(); } catch {}
+    try { if ((this as any).db) await (this as any).db.close(); } catch {}
     (this as any).conn = null;
     (this as any).db = null;
   }

@@ -238,10 +238,10 @@ export class RAGService {
     const params: Record<string, any> = {};
 
     if (fuzzy) {
-      // Fuzzy match using CONTAINS
+      // Case-insensitive substring match: compare lowercased stored name against lowercased query
       cypher = `
         MATCH (s:Symbol)<-[:CONTAINS]-(f:File)
-        WHERE s.name CONTAINS $name
+        WHERE toLower(s.name) CONTAINS $name
         OPTIONAL MATCH (c:Chunk)-[:DESCRIBES]->(s)
         RETURN s.name as name, s.kind as kind, s.range as range, c.text as text, f.path as filePath
         LIMIT 20

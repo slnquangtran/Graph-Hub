@@ -7,7 +7,10 @@ import { IngestionService } from '../ingestion/ingestion-service.ts';
 import { DocGenerator } from '../ai/doc-generator.ts';
 import fs from 'fs/promises';
 
-const GRAPHHUB_API_KEY = '600be357b24c482c80b8a617e7536416';
+const GRAPHHUB_API_KEY = process.env.GRAPHHUB_API_KEY;
+if (!GRAPHHUB_API_KEY) {
+  console.error('WARNING: GRAPHHUB_API_KEY environment variable is not set. The /api/find-purpose endpoint will reject all requests.');
+}
 const PROJECTS_FILE = './.graphhub/projects.json';
 
 interface Project {
@@ -210,6 +213,7 @@ The following functions have the most outgoing calls:
         await ingestion.indexDirectory(normalizedPath);
         await ingestion.resolveImports();
         await ingestion.resolveCalls();
+        await ingestion.resolveInheritance();
         console.log(`Indexing for ${normalizedPath} completed.`);
 
         // Get stats for the project
@@ -425,8 +429,10 @@ The following functions have the most outgoing calls:
         const cypher = [
           'MATCH (s:Symbol)',
           "WHERE s.kind IN ['function', 'method', 'class'] AND s.name <> 'anonymous'",
+          'WITH s',
           'OPTIONAL MATCH (caller:Symbol)-[:CALLS]->(s)',
-          'RETURN s.name as name, s.kind as kind, s.purpose as purpose, s.id as id, count(caller) as callerCount',
+          'WITH s, count(caller) as callerCount',
+          'RETURN s.name as name, s.kind as kind, s.purpose as purpose, s.id as id, callerCount',
           'ORDER BY callerCount ASC, s.name ASC',
         ].join(' ');
         const result = await this.db.runCypher(cypher);
@@ -535,7 +541,7 @@ The following functions have the most outgoing calls:
     // Requires a valid x-api-key header matching GRAPHHUB_API_KEY.
     this.app.post('/api/find-purpose', async (req, res) => {
       const providedKey = req.headers['x-api-key'] as string | undefined;
-      if (!providedKey || providedKey !== GRAPHHUB_API_KEY) {
+      if (!GRAPHHUB_API_KEY || !providedKey || providedKey !== GRAPHHUB_API_KEY) {
         res.status(401).json({ error: 'Invalid or missing API key' });
         return;
       }

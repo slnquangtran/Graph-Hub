@@ -1,5 +1,5 @@
 import { GraphClient } from '../db/graph-client.ts';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 
 interface SymbolStats {
@@ -36,21 +36,21 @@ export class ReportGenerator {
     });
 
     const outPath = path.join(outputDir, 'GRAPH_REPORT.md');
-    fs.mkdirSync(outputDir, { recursive: true });
-    fs.writeFileSync(outPath, report);
+    await fs.mkdir(outputDir, { recursive: true });
+    await fs.writeFile(outPath, report);
     return outPath;
   }
 
   private async getFileCount(): Promise<number> {
     const result = await this.db.runCypher('MATCH (f:File) RETURN count(f) as cnt');
     const rows = await result.getAll();
-    return rows[0]?.cnt || 0;
+    return Number(rows[0]?.cnt || 0);
   }
 
   private async getSymbolCount(): Promise<number> {
     const result = await this.db.runCypher('MATCH (s:Symbol) RETURN count(s) as cnt');
     const rows = await result.getAll();
-    return rows[0]?.cnt || 0;
+    return Number(rows[0]?.cnt || 0);
   }
 
   private async getGodNodes(limit: number): Promise<SymbolStats[]> {

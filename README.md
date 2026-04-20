@@ -6,7 +6,7 @@
 
 Transform your codebase into a queryable knowledge graph. Built for Claude Code, Cursor, and MCP-compatible tools.
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/slnquangtran/graphhub/releases)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/slnquangtran/graphhub/releases)
 [![License](https://img.shields.io/badge/license-ISC-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
@@ -180,7 +180,7 @@ Symbol ──IMPLEMENTS──▶ Symbol
 |----------|---------|--------|
 | TypeScript / TSX | Full | Tree-sitter AST |
 | JavaScript / JSX | Full | Tree-sitter AST |
-| Python | Partial | Text chunker |
+| Python | Full | Tree-sitter AST |
 | Go, Rust, Java | Partial | Text chunker |
 | Markdown, Shell | Full | Text chunker |
 
@@ -240,6 +240,20 @@ Adds the PreToolUse/PostToolUse hooks and updates `CLAUDE.md`. The multi-client 
 | `npm run install-claude` | Configure Claude Code hooks + CLAUDE.md (legacy, Claude-only) |
 | `npm test` | Run test suite |
 
+## Changelog
+
+### v1.3.0
+- **DB lifecycle fix** — MCP server, watch mode, and all CLI commands now properly release the KuzuDB file lock on exit. Concurrent tool/process conflicts are gone.
+- **`.gitignore` support** — cross-platform path normalization (fixes Windows `\` vs `/` mismatch so gitignore patterns apply correctly on all platforms)
+- **Python parser** — upgraded to full Tree-sitter AST extraction (functions, classes, calls, inheritance)
+- **Import alias resolution** — `import { foo as bar }` now stores `foo` as the specifier, fixing cross-file call graph edges for renamed imports
+- **Fuzzy symbol search** — case-insensitive (`toLower(s.name) CONTAINS query`)
+- **`forget()` safety** — requires at least one filter; calling with no args no longer silently deletes all observations
+- **MCP `get_file_symbols`** — was returning an empty object (raw DB cursor); now returns the actual rows
+- **Error resilience** — per-file parse errors during directory indexing no longer abort the entire run; `stats.errors` is now accurate
+- **API `/api/index`** — now also resolves inheritance edges (was missing `resolveInheritance()`)
+- **BigInt coercion** — KuzuDB `count()` results coerced to `Number` everywhere; `JSON.stringify` no longer throws on stats
+
 ## Privacy
 
 - **100% Local** — All data stays in `.graphhub/` in your project
@@ -268,9 +282,10 @@ Adds the PreToolUse/PostToolUse hooks and updates `CLAUDE.md`. The multi-client 
 - [x] One-shot `debug_trace` and bulk `batch_context`
 - [x] Pattern memory for bug fixes and skill routing
 - [x] One-command multi-client setup (Claude Code, OpenCode, Gemini CLI, Antigravity)
+- [x] `.gitignore` support (cross-platform, including Windows path normalization)
+- [x] Proper database lifecycle — `close()` releases the file lock immediately on MCP server, watch mode, and CLI exit
 - [ ] Worker thread indexing for large repos
-- [ ] `.gitignore` support
-- [ ] Native Python/Go Tree-sitter grammars
+- [ ] Native Go/Rust/Java Tree-sitter grammars
 - [ ] Community detection (Leiden algorithm)
 
 ## Contributing

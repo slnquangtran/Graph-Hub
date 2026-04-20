@@ -78,8 +78,10 @@ export class WatchService {
     this.resolveTimer = setTimeout(() => {
       this.resolveTimer = null;
       if (!this.resolveDirty) return;
-      this.resolveDirty = false;
       this.enqueue(async () => {
+        // Clear the flag inside async work so any changes that arrive between
+        // the timer firing and work completing will schedule a fresh resolve.
+        this.resolveDirty = false;
         await this.ingestion.resolveImports();
         await this.ingestion.resolveCalls();
         await this.ingestion.resolveInheritance();

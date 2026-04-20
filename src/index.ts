@@ -5,6 +5,7 @@ import { DocGenerator } from './services/ai/doc-generator.ts';
 import { Installer } from './services/install/installer.ts';
 import { ReportGenerator } from './services/report/report-generator.ts';
 import { ObservationService } from './services/memory/observation-service.ts';
+import { GraphClient } from './services/db/graph-client.ts';
 import path from 'path';
 import fs from 'fs';
 
@@ -52,12 +53,22 @@ async function main() {
       },
     });
     console.error(`Watching ${path.resolve(targetDir)} (Ctrl-C to stop)`);
-    const shutdown = async () => { await watcher.stop(); process.exit(0); };
+    const shutdown = async () => {
+      await watcher.stop();
+      await GraphClient.getInstance().close();
+      process.exit(0);
+    };
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
   } else if (command === 'serve') {
     const server = new GraphHubMCPServer();
     console.error('--- GraphHub MCP Server Starting ---');
+    const shutdown = async () => {
+      await GraphClient.getInstance().close();
+      process.exit(0);
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
     await server.run();
   } else if (command === 'visualize') {
     const exporter = new GraphExporter();
@@ -105,7 +116,12 @@ async function main() {
       process.exit(0);
     }
 
-    const positional = args.slice(1).filter((a) => !a.startsWith('--') && args[args.indexOf(a) - 1] !== '--client');
+    const positional: string[] = [];
+    for (let i = 1; i < args.length; i++) {
+      if (!args[i].startsWith('--') && args[i - 1] !== '--client') {
+        positional.push(args[i]);
+      }
+    }
     const projectDir = positional[0] || process.cwd();
 
     console.error('--- GraphHub Multi-Client Setup ---');
@@ -136,7 +152,12 @@ async function main() {
       ? args[clientFlag + 1].split(',').map((s) => s.trim()).filter(Boolean)
       : undefined;
     const force = args.includes('--force');
-    const positional = args.slice(1).filter((a) => !a.startsWith('--') && args[args.indexOf(a) - 1] !== '--client');
+    const positional: string[] = [];
+    for (let i = 1; i < args.length; i++) {
+      if (!args[i].startsWith('--') && args[i - 1] !== '--client') {
+        positional.push(args[i]);
+      }
+    }
     const projectDir = positional[0] || process.cwd();
     console.error('--- GraphHub Multi-Client Uninstall ---');
     const results = await installer.uninstallAll({ projectDir, clients, force });

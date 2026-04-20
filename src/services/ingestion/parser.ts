@@ -188,6 +188,7 @@ export class CodeParser {
             name: className,
             kind: 'class',
             range: this.getRange(node),
+            calls: [],
             doc: pendingComments.join('\n'),
             extends: extendsClass,
             implements: implementsInterfaces.length > 0 ? implementsInterfaces : undefined
@@ -240,7 +241,11 @@ export class CodeParser {
             if (clause) {
               // Find named imports, namespace imports, etc.
               const named = clause.descendantsOfType('import_specifier');
-              named.forEach(n => specifiers.push(n.text));
+              named.forEach(n => {
+                // Extract only the original exported name, not the local alias
+                const originalName = n.childForFieldName('name')?.text || n.text.split(' as ')[0].trim();
+                specifiers.push(originalName);
+              });
               
               // Handle default import
               const firstChild = clause.child(0);
@@ -267,7 +272,7 @@ export class CodeParser {
 
       if (symbol) {
         symbols.push(symbol);
-        if (['function', 'method'].includes(symbol.kind)) {
+        if (['function', 'method', 'class'].includes(symbol.kind)) {
           currentSymbolsStack.push(symbol);
         }
       }
@@ -276,7 +281,7 @@ export class CodeParser {
         visit(node.child(i)!);
       }
 
-      if (symbol && ['function', 'method'].includes(symbol.kind)) {
+      if (symbol && ['function', 'method', 'class'].includes(symbol.kind)) {
         currentSymbolsStack.pop();
       }
     };

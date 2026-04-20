@@ -72,6 +72,10 @@ export class DocGenerator {
           messages: [{ role: 'user', content: prompt }],
         }),
       });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Anthropic API error ${response.status}: ${errorText}`);
+      }
       const data = await response.json();
       return data.content?.[0]?.text || '';
     } else {
@@ -97,6 +101,10 @@ export class DocGenerator {
           temperature: 0.3,
         }),
       });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`LLM API error ${response.status}: ${errorText}`);
+      }
       const data = await response.json();
       return data.choices?.[0]?.message?.content || '';
     }
@@ -260,7 +268,6 @@ Respond in this exact JSON format (no markdown, just raw JSON):
   private camelToWords(str: string): string {
     return str
       .replace(/([A-Z])/g, ' $1')
-      .replace(/^./, s => s.toUpperCase())
       .trim()
       .toLowerCase();
   }

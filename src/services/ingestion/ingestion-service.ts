@@ -70,7 +70,7 @@ export class IngestionService {
 
   public async isIgnored(absolutePath: string, rootDir: string): Promise<boolean> {
     const ig = await this.loadGitignore(rootDir);
-    const rel = path.relative(rootDir, absolutePath);
+    const rel = path.relative(rootDir, absolutePath).replace(/\\/g, '/');
     if (!rel || rel.startsWith('..')) return true;
     return ig.ignores(rel) || ig.ignores(rel + '/');
   }
@@ -227,12 +227,18 @@ export class IngestionService {
     await this.db.runCypher(
       'MERGE (s:Symbol {id: $id}) ' +
       'ON CREATE SET s.name = $name, s.kind = $kind, s.calls = [], s.import_specifiers = []',
-      { 
-        id: symId, 
-        name: path.basename(filePath), 
+      {
+        id: symId,
+        name: path.basename(filePath),
         kind: 'file_module'
       }
     );
+
+    // Delete stale chunks from previous index run to prevent orphaned nodes
+    await this.db.runCypher(
+      'MATCH (c:Chunk)-[:DESCRIBES]->(s:Symbol {id: $symId}) DETACH DELETE c',
+      { symId }
+    ).catch(() => {});
 
     await this.db.runCypher(
       'MATCH (f:File {path: $path}), (s:Symbol {id: $symId}) MERGE (f)-[:CONTAINS]->(s)',
@@ -298,7 +304,7 @@ export class IngestionService {
     const extensions = ['.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.js'];
 
     for (const ext of extensions) {
-      const candidate = ext.startsWith('/') ? targetBase + ext : targetBase + ext;
+      const candidate = targetBase + ext;
       try {
         await fs.access(candidate);
         return candidate;
@@ -444,7 +450,7 @@ export class IngestionService {
 
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name);
-      const relativePath = path.relative(root, fullPath);
+      const relativePath = path.relative(root, fullPath).replace(/\\/g, '/');
 
       if (ig.ignores(relativePath) || ig.ignores(relativePath + '/')) continue;
 
@@ -456,10 +462,20 @@ export class IngestionService {
         const fallbackExtensions = ['.java', '.c', '.cpp', '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.md', '.txt', '.sh', '.ps1'];
 
         if (parsedExtensions.includes(ext.toLowerCase())) {
-          await this.indexFile(fullPath);
+          try {
+            await this.indexFile(fullPath);
+          } catch (err: any) {
+            console.error(`Error indexing ${fullPath}: ${err.message}`);
+            this.runStats.errors++;
+          }
           seen.add(path.resolve(fullPath));
         } else if (fallbackExtensions.includes(ext.toLowerCase())) {
-          await this.indexFileFallback(fullPath);
+          try {
+            await this.indexFileFallback(fullPath);
+          } catch (err: any) {
+            console.error(`Error indexing ${fullPath}: ${err.message}`);
+            this.runStats.errors++;
+          }
           seen.add(path.resolve(fullPath));
         }
       }

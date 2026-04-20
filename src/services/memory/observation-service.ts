@@ -267,7 +267,7 @@ export class ObservationService {
   } = {}): Promise<TimelineEntry[]> {
     await this.initializeSchema();
 
-    const limit = options.limit || 50;
+    const limit = Math.max(1, Math.min(Number(options.limit || 50), 1000));
     const orderBy = options.orderBy || 'desc';
 
     let cypher = 'MATCH (o:Observation)';
@@ -327,7 +327,7 @@ export class ObservationService {
       params
     );
     const totalRows = await totalResult.getAll();
-    const total = totalRows[0]?.count || 0;
+    const total = Number(totalRows[0]?.count || 0);
 
     // By type
     const byTypeResult = await this.db.runCypher(
@@ -337,7 +337,7 @@ export class ObservationService {
     const byTypeRows = await byTypeResult.getAll();
     const byType: Record<string, number> = {};
     for (const row of byTypeRows) {
-      byType[row.type] = row.count;
+      byType[row.type] = Number(row.count);
     }
 
     // By project (only if not filtered)
@@ -348,7 +348,7 @@ export class ObservationService {
       );
       const byProjectRows = await byProjectResult.getAll();
       for (const row of byProjectRows) {
-        byProject[row.project || 'default'] = row.count;
+        byProject[row.project || 'default'] = Number(row.count);
       }
     }
 
@@ -360,7 +360,7 @@ export class ObservationService {
     const byImportanceRows = await byImportanceResult.getAll();
     const byImportance: Record<string, number> = {};
     for (const row of byImportanceRows) {
-      byImportance[row.importance || 'medium'] = row.count;
+      byImportance[row.importance || 'medium'] = Number(row.count);
     }
 
     // Recent (last 24 hours)
@@ -370,7 +370,7 @@ export class ObservationService {
       { since: oneDayAgo, ...(project ? { project } : {}) }
     );
     const recentRows = await recentResult.getAll();
-    const recentCount = recentRows[0]?.count || 0;
+    const recentCount = Number(recentRows[0]?.count || 0);
 
     return { total, byType, byProject, byImportance, recentCount };
   }
@@ -482,23 +482,32 @@ export class ObservationService {
       params.type = options.type;
     }
 
-    if (conditions.length > 0) {
-      cypher += ' WHERE ' + conditions.join(' AND ');
+    if (conditions.length === 0) {
+      throw new Error('forget() requires at least one filter: observation_id, session_id, project, type, or before');
     }
 
-    cypher += ' DETACH DELETE o';
-    await this.db.runCypher(cypher, params);
-    return 1;
+    cypher += ' WHERE ' + conditions.join(' AND ');
+
+    const countResult = await this.db.runCypher(
+      cypher + ' RETURN count(o) as cnt',
+      params
+    );
+    const countRows = await countResult.getAll();
+    const deleted = Number(countRows[0]?.cnt || 0);
+
+    await this.db.runCypher(cypher + ' DETACH DELETE o', params);
+    return deleted;
   }
 
   public async getRelatedObservations(symbolName: string, limit = 10): Promise<Observation[]> {
     await this.initializeSchema();
 
+    const safeLimit = Math.max(1, Math.min(Number(limit), 1000));
     const result = await this.db.runCypher(
       `MATCH (o:Observation)-[:RELATES_TO]->(s:Symbol {name: $name})
        RETURN o.id, o.session_id, o.project, o.timestamp, o.type, o.title, o.content, o.importance, o.file_paths, o.tags
        ORDER BY o.timestamp DESC
-       LIMIT ${limit}`,
+       LIMIT ${safeLimit}`,
       { name: symbolName }
     );
     const rows = await result.getAll();
@@ -526,6 +535,7 @@ export class ObservationService {
       normA += a[i] * a[i];
       normB += b[i] * b[i];
     }
-    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+    const denom = Math.sqrt(normA) * Math.sqrt(normB);
+    return denom === 0 ? 0 : dot / denom;
   }
 }
