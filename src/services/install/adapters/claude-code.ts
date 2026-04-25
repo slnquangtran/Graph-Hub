@@ -166,7 +166,7 @@ try {
 } catch { process.exit(0); }
 // Stamp lives in graphhubDir keyed by a hash of the project path
 const stampDir = path.join(GRAPHHUB_DIR, '.graphhub', '.stamps');
-const projectHash = Buffer.from(projectDir).toString('base64').replace(/[+/=]/g, '').slice(0, 12);
+const projectHash = require('crypto').createHash('sha256').update(projectDir).digest('hex').slice(0, 16);
 const stampFile = path.join(stampDir, projectHash);
 if (fs.existsSync(stampFile) && fs.readFileSync(stampFile, 'utf8').trim() === currentCommit) process.exit(0);
 // Write stamp before spawning so a crash doesn't loop indefinitely

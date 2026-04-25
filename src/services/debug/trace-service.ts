@@ -48,7 +48,8 @@ export class DebugTraceService {
     const topK = options.top_k ?? 3;
     const snippetChars = options.snippet_chars ?? 200;
 
-    const hits = await this.rag.search(query, topK);
+    // Request more hits than needed so deduplication still yields topK unique symbols
+    const hits = await this.rag.search(query, topK * 4);
 
     const candidates: DebugCandidate[] = [];
     const seen = new Set<string>();
@@ -56,6 +57,7 @@ export class DebugTraceService {
       if (seen.has(hit.symbolName)) continue;
       seen.add(hit.symbolName);
       candidates.push(await this.enrich(hit, snippetChars));
+      if (candidates.length >= topK) break;
     }
 
     return {

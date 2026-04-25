@@ -15,16 +15,6 @@ export async function startRepl(): Promise<void> {
   let busy = false;
   let shutdownPending = false;
 
-  const shutdown = () => {
-    console.log('');
-    if (!busy) {
-      process.exit(0);
-    } else {
-      console.error('Finishing current command, then exiting…');
-      shutdownPending = true;
-    }
-  };
-
   rl.prompt();
 
   rl.on('line', async (line) => {
@@ -44,7 +34,7 @@ export async function startRepl(): Promise<void> {
     if (name === 'exit' || name === 'quit') {
       console.log('Goodbye.');
       rl.close();
-      process.exit(0);
+      return;
     }
 
     if (name === 'help') {
@@ -87,6 +77,18 @@ export async function startRepl(): Promise<void> {
     }
   });
 
-  rl.on('close', shutdown);
-  process.on('SIGINT', shutdown);
+  // Single exit path: rl.close() → 'close' event → process.exit
+  rl.on('close', () => process.exit(0));
+
+  // Use rl.on('SIGINT') instead of process.on('SIGINT') to prevent double-fire.
+  // When registered here, readline emits 'SIGINT' on Ctrl-C but does NOT auto-close.
+  rl.on('SIGINT', () => {
+    console.log('');
+    if (!busy) {
+      rl.close();
+    } else {
+      console.error('Finishing current command, then exiting…');
+      shutdownPending = true;
+    }
+  });
 }

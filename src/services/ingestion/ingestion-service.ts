@@ -202,16 +202,20 @@ export class IngestionService {
         if (body.length > 20) chunkText = `[body] ${body.slice(0, 600)}`;
       }
       if (chunkText) {
-        const chunkId = `chunk:${symId}`;
-        const embedding = await this.embeddingService.generateEmbedding(chunkText);
-        await this.db.runCypher(
-          'MERGE (c:Chunk {id: $id}) SET c.text = $text, c.embedding = $embedding',
-          { id: chunkId, text: chunkText, embedding }
-        );
-        await this.db.runCypher(
-          'MATCH (c:Chunk {id: $chunkId}), (s:Symbol {id: $symId}) MERGE (c)-[:DESCRIBES]->(s)',
-          { chunkId, symId }
-        );
+        try {
+          const chunkId = `chunk:${symId}`;
+          const embedding = await this.embeddingService.generateEmbedding(chunkText);
+          await this.db.runCypher(
+            'MERGE (c:Chunk {id: $id}) SET c.text = $text, c.embedding = $embedding',
+            { id: chunkId, text: chunkText, embedding }
+          );
+          await this.db.runCypher(
+            'MATCH (c:Chunk {id: $chunkId}), (s:Symbol {id: $symId}) MERGE (c)-[:DESCRIBES]->(s)',
+            { chunkId, symId }
+          );
+        } catch (err: any) {
+          console.error(`Warning: embedding failed for ${symId}: ${err.message}`);
+        }
       }
     }
 

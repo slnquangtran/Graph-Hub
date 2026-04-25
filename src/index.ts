@@ -96,6 +96,12 @@ async function main() {
     const { GraphHubAPIServer } = await import('./services/api/server.ts');
     const server = new GraphHubAPIServer();
     console.error('--- GraphHub API Server Starting ---');
+    const shutdown = async () => {
+      await GraphClient.getInstance().close();
+      process.exit(0);
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
     await server.initialize();
     server.listen(9000);
   } else if (command === 'install') {
